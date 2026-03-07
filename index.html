@@ -28,8 +28,6 @@ to top,
 touch-action:manipulation;
 }
 
-/* disable touch everywhere except triangle */
-
 body *:not(.triangle){
 pointer-events:none;
 }
@@ -37,8 +35,6 @@ pointer-events:none;
 .triangle{
 pointer-events:auto;
 }
-
-/* TAP SCREEN */
 
 #tapScreen{
 position:fixed;
@@ -67,8 +63,6 @@ text-align:center;
 pointer-events:auto;
 }
 
-/* MESSAGE */
-
 #quaField{
 
 position:fixed;
@@ -95,8 +89,6 @@ text-align:center;
 
 }
 
-/* canvas */
-
 canvas{
 position:absolute;
 pointer-events:none;
@@ -106,8 +98,6 @@ pointer-events:none;
 #bottomRing{z-index:1}
 .triangle{z-index:2}
 #topRing{z-index:3}
-
-/* triangle */
 
 .triangle{
 position:absolute;
@@ -121,8 +111,6 @@ border-bottom:200px solid black;
 animation:breathe 12s ease-in-out infinite alternate;
 cursor:pointer;
 }
-
-/* PORTAL GLOW */
 
 .triangle::after{
 content:"";
@@ -142,8 +130,6 @@ z-index:-1;
 100%{transform:scale(1)}
 }
 
-/* bottom text */
-
 .comingSoon{
 
 position:fixed;
@@ -161,8 +147,6 @@ opacity:0.65;
 z-index:5;
 
 }
-
-/* MOBILE */
 
 @media (max-width:768px){
 
@@ -223,7 +207,7 @@ const source=audioCtx.createMediaElementSource(music)
 source.connect(analyser)
 analyser.connect(audioCtx.destination)
 
-analyser.fftSize=128
+analyser.fftSize=512
 
 const audioData=new Uint8Array(analyser.frequencyBinCount)
 
@@ -234,21 +218,24 @@ function updateAudio(){
 
 analyser.getByteFrequencyData(audioData)
 
-/* bass for torus */
+/* TORUS → low frequencies (0-150hz approx) */
 
 let bassSum=0
-for(let i=0;i<10;i++){
+let bassCount=0
+
+for(let i=0;i<=2;i++){
 bassSum+=audioData[i]
+bassCount++
 }
 
-bassLevel=bassSum/10/255
+bassLevel=bassSum/bassCount/255
 
-/* frequencies >= ~856hz for stars */
+/* STARS → ≥856hz */
 
 let sparkleSum=0
 let sparkleCount=0
 
-for(let i=3;i<audioData.length;i++){
+for(let i=10;i<audioData.length;i++){
 sparkleSum+=audioData[i]
 sparkleCount++
 }
