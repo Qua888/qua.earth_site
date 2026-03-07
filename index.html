@@ -119,17 +119,6 @@ animation:breathe 12s ease-in-out infinite alternate;
 cursor:pointer;
 }
 
-/* bigger invisible tap area */
-
-.triangle::before{
-content:"";
-position:absolute;
-left:-120px;
-top:-120px;
-width:240px;
-height:240px;
-}
-
 /* PORTAL GLOW */
 
 .triangle::after{
@@ -301,8 +290,25 @@ music.pause()
 }
 
 triangle.addEventListener("click",(e)=>{
+
+const rect=triangle.getBoundingClientRect()
+
+const x=e.clientX-rect.left
+const y=e.clientY-rect.top
+
+const width=rect.width
+const height=rect.height
+
+const insideTriangle=
+y<=height &&
+x>=(width/2)*(y/height) &&
+x<=width-(width/2)*(y/height)
+
+if(!insideTriangle) return
+
 e.preventDefault()
 toggleAudio()
+
 })
 
 /* MOUSE */
