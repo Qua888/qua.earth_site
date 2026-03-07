@@ -193,7 +193,6 @@ border-bottom:120px solid black;
 <div>Aligned</div>
 <div>Harmonic</div>
 <div>Celebration</div>
-
 </div>
 
 <div id="quaField">
@@ -285,7 +284,7 @@ quaField.style.opacity="0"
 
 })
 
-/* TRIANGLE PLAY PAUSE */
+/* TRIANGLE PLAY / PAUSE */
 
 function toggleAudio(){
 
@@ -301,8 +300,10 @@ music.pause()
 
 }
 
-triangle.addEventListener("click",toggleAudio)
-triangle.addEventListener("touchstart",toggleAudio)
+triangle.addEventListener("click",(e)=>{
+e.preventDefault()
+toggleAudio()
+})
 
 /* MOUSE */
 
