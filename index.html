@@ -74,7 +74,8 @@ pointer-events:auto;
 position:fixed;
 top:40px;
 left:50%;
-transform:translateX(-50%);
+
+transform:translateX(-50%) translateY(20px);
 
 font-family:Georgia,serif;
 letter-spacing:2px;
@@ -83,11 +84,13 @@ font-size:18px;
 color:black;
 
 opacity:0;
-pointer-events:none;
 
 z-index:10;
 
-transition:opacity 2s ease;
+transition:
+opacity 4s ease,
+transform 4s ease;
+
 text-align:center;
 
 }
@@ -231,6 +234,8 @@ function updateAudio(){
 
 analyser.getByteFrequencyData(audioData)
 
+/* bass for torus */
+
 let bassSum=0
 for(let i=0;i<10;i++){
 bassSum+=audioData[i]
@@ -238,12 +243,17 @@ bassSum+=audioData[i]
 
 bassLevel=bassSum/10/255
 
+/* frequencies >= ~856hz for stars */
+
 let sparkleSum=0
-for(let i=20;i<40;i++){
+let sparkleCount=0
+
+for(let i=3;i<audioData.length;i++){
 sparkleSum+=audioData[i]
+sparkleCount++
 }
 
-sparkleLevel=sparkleSum/20/255
+sparkleLevel=sparkleSum/sparkleCount/255
 
 requestAnimationFrame(updateAudio)
 
@@ -265,7 +275,8 @@ tapScreen.style.display="none"
 
 setTimeout(()=>{
 quaField.style.opacity="1"
-},900)
+quaField.style.transform="translateX(-50%) translateY(0)"
+},1600)
 
 setTimeout(()=>{
 quaField.style.opacity="0"
