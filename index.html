@@ -11,7 +11,7 @@
 body{
 margin:0;
 overflow:hidden;
-min-height:100vh;
+height:100vh;
 display:flex;
 justify-content:center;
 align-items:center;
@@ -117,13 +117,6 @@ position:absolute;
 pointer-events:none;
 }
 
-#stars,
-#bottomRing,
-#topRing{
-width:100vw;
-height:100vh;
-}
-
 #stars{z-index:0}
 #flowerFloor{z-index:1}
 #bottomRing{z-index:2}
@@ -191,21 +184,18 @@ z-index:-1;
 
 /* MOBILE */
 
-@media (max-width:768px) and (orientation:landscape){
-
-#flowerFloor{
-width:220px;
-
-transform:
-translate(-50%,-120px)
-perspective(900px)
-rotateX(68deg);
-}
+@media (max-width:768px){
 
 .triangle{
-border-left:60px solid transparent;
-border-right:60px solid transparent;
-border-bottom:100px solid black;
+border-left:70px solid transparent;
+border-right:70px solid transparent;
+border-bottom:120px solid black;
+}
+
+/* hide sacred geometry floor on mobile */
+
+#flowerFloor{
+display:none;
 }
 
 }
