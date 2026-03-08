@@ -279,18 +279,6 @@ pointer.x=e.clientX
 pointer.y=e.clientY
 })
 
-/* MOUSE */
-
-let mouse={
-x:window.innerWidth/2,
-y:window.innerHeight/2
-}
-
-window.addEventListener("mousemove",(e)=>{
-mouse.x=e.clientX
-mouse.y=e.clientY
-})
-
 function updateAudio(){
 
 analyser.getByteFrequencyData(audioData)
@@ -353,7 +341,27 @@ music.pause()
 
 }
 
-triangle.addEventListener("click",toggleAudio)
+triangle.addEventListener("pointerdown",(e)=>{
+
+const rect = triangle.getBoundingClientRect()
+
+const x = e.clientX - rect.left
+const y = e.clientY - rect.top
+
+const width = rect.width
+const height = rect.height
+
+const leftEdge = (width/2) - (width/2)*(1 - y/height)
+const rightEdge = (width/2) + (width/2)*(1 - y/height)
+
+if(y < 0 || y > height || x < leftEdge || x > rightEdge){
+return
+}
+
+e.preventDefault()
+toggleAudio()
+
+})
 
 /* STARFIELD */
 
