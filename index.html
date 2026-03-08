@@ -184,22 +184,21 @@ z-index:-1;
 
 /* MOBILE */
 
-@media (max-width:768px){
-
-.triangle{
-border-left:70px solid transparent;
-border-right:70px solid transparent;
-border-bottom:120px solid black;
-}
+@media (max-width:768px) and (orientation:landscape){
 
 #flowerFloor{
-width:286px;
+width:220px;
 
 transform:
-translate(-50%,-163px)
+translate(-50%,-120px)
 perspective(900px)
 rotateX(68deg);
+}
 
+.triangle{
+border-left:60px solid transparent;
+border-right:60px solid transparent;
+border-bottom:100px solid black;
 }
 
 }
