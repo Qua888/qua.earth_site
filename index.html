@@ -84,7 +84,29 @@ pointer-events:none;
 
 z-index:10;
 
-transition:opacity 2s ease;
+transition:opacity 6s ease;
+text-align:center;
+}
+
+/* FOOTER */
+
+#comingSoon{
+position:fixed;
+bottom:28px;
+left:50%;
+transform:translateX(-50%);
+
+font-family:Georgia,serif;
+letter-spacing:2px;
+font-size:14px;
+
+color:black;
+opacity:0.6;
+
+pointer-events:none;
+
+z-index:10;
+
 text-align:center;
 }
 
@@ -110,13 +132,12 @@ position:absolute;
 top:68%;
 left:50%;
 
-width:789px;   /* another +12% */
+width:664px;
 
 transform:
 translate(-50%,-464px)
 perspective(900px)
-rotateX(68deg)
-;
+rotateX(68deg);
 
 opacity:0.25;
 
@@ -195,6 +216,10 @@ One is now invited to experience<br>
 Joy<br>
 Qua<br>
 Peace & Elegant Vitality
+</div>
+
+<div id="comingSoon">
+More to come very soon...
 </div>
 
 <canvas id="stars"></canvas>
