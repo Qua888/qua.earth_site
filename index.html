@@ -36,6 +36,8 @@ pointer-events:none;
 pointer-events:auto;
 }
 
+/* TAP SCREEN */
+
 #tapScreen{
 position:fixed;
 top:0;
@@ -63,13 +65,13 @@ text-align:center;
 pointer-events:auto;
 }
 
-#quaField{
+/* MESSAGE */
 
+#quaField{
 position:fixed;
 top:40px;
 left:50%;
-
-transform:translateX(-50%) translateY(20px);
+transform:translateX(-50%);
 
 font-family:Georgia,serif;
 letter-spacing:2px;
@@ -78,16 +80,15 @@ font-size:18px;
 color:black;
 
 opacity:0;
+pointer-events:none;
 
 z-index:10;
 
-transition:
-opacity 4s ease,
-transform 4s ease;
-
+transition:opacity 2s ease;
 text-align:center;
-
 }
+
+/* canvas layers */
 
 canvas{
 position:absolute;
@@ -95,9 +96,37 @@ pointer-events:none;
 }
 
 #stars{z-index:0}
-#bottomRing{z-index:1}
-.triangle{z-index:2}
-#topRing{z-index:3}
+#flowerFloor{z-index:1}
+#bottomRing{z-index:2}
+.triangle{z-index:3}
+#topRing{z-index:4}
+
+/* SACRED GEOMETRY FLOOR */
+
+#flowerFloor{
+
+position:absolute;
+
+top:68%;
+left:50%;
+
+width:789px;   /* another +12% */
+
+transform:
+translate(-50%,-464px)
+perspective(900px)
+rotateX(68deg)
+;
+
+opacity:0.25;
+
+pointer-events:none;
+
+z-index:1;
+
+}
+
+/* triangle */
 
 .triangle{
 position:absolute;
@@ -111,6 +140,8 @@ border-bottom:200px solid black;
 animation:breathe 12s ease-in-out infinite alternate;
 cursor:pointer;
 }
+
+/* glow */
 
 .triangle::after{
 content:"";
@@ -130,23 +161,7 @@ z-index:-1;
 100%{transform:scale(1)}
 }
 
-.comingSoon{
-
-position:fixed;
-bottom:20px;
-left:50%;
-transform:translateX(-50%);
-
-font-size:14px;
-letter-spacing:1px;
-
-color:black;
-font-family:Georgia,serif;
-
-opacity:0.65;
-z-index:5;
-
-}
+/* MOBILE */
 
 @media (max-width:768px){
 
@@ -154,6 +169,10 @@ z-index:5;
 border-left:70px solid transparent;
 border-right:70px solid transparent;
 border-bottom:120px solid black;
+}
+
+#flowerFloor{
+width:580px;
 }
 
 }
@@ -179,6 +198,9 @@ Peace & Elegant Vitality
 </div>
 
 <canvas id="stars"></canvas>
+
+<img id="flowerFloor" src="./outer_ring_torus_flower.svg">
+
 <canvas id="bottomRing"></canvas>
 
 <div class="triangle"></div>
@@ -207,7 +229,7 @@ const source=audioCtx.createMediaElementSource(music)
 source.connect(analyser)
 analyser.connect(audioCtx.destination)
 
-analyser.fftSize=512
+analyser.fftSize=128
 
 const audioData=new Uint8Array(analyser.frequencyBinCount)
 
@@ -218,29 +240,19 @@ function updateAudio(){
 
 analyser.getByteFrequencyData(audioData)
 
-/* TORUS → low frequencies (0-150hz approx) */
-
 let bassSum=0
-let bassCount=0
-
-for(let i=0;i<=2;i++){
+for(let i=0;i<10;i++){
 bassSum+=audioData[i]
-bassCount++
 }
 
-bassLevel=bassSum/bassCount/255
-
-/* STARS → ≥856hz */
+bassLevel=bassSum/10/255
 
 let sparkleSum=0
-let sparkleCount=0
-
-for(let i=10;i<audioData.length;i++){
+for(let i=20;i<40;i++){
 sparkleSum+=audioData[i]
-sparkleCount++
 }
 
-sparkleLevel=sparkleSum/sparkleCount/255
+sparkleLevel=sparkleSum/20/255
 
 requestAnimationFrame(updateAudio)
 
@@ -262,8 +274,7 @@ tapScreen.style.display="none"
 
 setTimeout(()=>{
 quaField.style.opacity="1"
-quaField.style.transform="translateX(-50%) translateY(0)"
-},1600)
+},900)
 
 setTimeout(()=>{
 quaField.style.opacity="0"
@@ -271,7 +282,7 @@ quaField.style.opacity="0"
 
 })
 
-/* TRIANGLE PLAY / PAUSE */
+/* TRIANGLE PLAY PAUSE */
 
 function toggleAudio(){
 
@@ -287,39 +298,7 @@ music.pause()
 
 }
 
-triangle.addEventListener("click",(e)=>{
-
-const rect=triangle.getBoundingClientRect()
-
-const x=e.clientX-rect.left
-const y=e.clientY-rect.top
-
-const width=rect.width
-const height=rect.height
-
-const insideTriangle=
-y<=height &&
-x>=(width/2)*(y/height) &&
-x<=width-(width/2)*(y/height)
-
-if(!insideTriangle) return
-
-e.preventDefault()
-toggleAudio()
-
-})
-
-/* MOUSE */
-
-let mouse={
-x:window.innerWidth/2,
-y:window.innerHeight/2
-}
-
-window.addEventListener("mousemove",(e)=>{
-mouse.x=e.clientX
-mouse.y=e.clientY
-})
+triangle.addEventListener("click",toggleAudio)
 
 /* STARFIELD */
 
@@ -362,15 +341,6 @@ s.y=starCanvas.height
 s.x=Math.random()*starCanvas.width
 }
 
-let dx=mouse.x-s.x
-let dy=mouse.y-s.y
-let dist=Math.sqrt(dx*dx+dy*dy)
-
-if(dist<150){
-s.x-=dx*0.03
-s.y-=dy*0.03
-}
-
 let glow=(0.36 + sparkleLevel*0.84)
 
 starCtx.beginPath()
@@ -410,25 +380,7 @@ this.size=Math.random()*2+1
 }
 
 update(){
-
-let speed=this.baseSpeed
-
-const centerX=canvas.width/2
-const centerY=canvas.height/2+offset
-
-let x=centerX+Math.cos(this.angle)*this.radius
-let y=centerY+Math.sin(this.angle)*this.radius*0.35
-
-let dx=mouse.x-x
-let dy=mouse.y-y
-let dist=Math.sqrt(dx*dx+dy*dy)
-
-if(dist<180){
-speed*=0.43
-}
-
-this.angle+=speed
-
+this.angle+=this.baseSpeed
 }
 
 draw(){
@@ -479,8 +431,6 @@ createRing("bottomRing",96,false,1.16)
 createRing("topRing",-68,true,1)
 
 </script>
-
-<div class="comingSoon">more to come very soon...</div>
 
 </body>
 </html>
