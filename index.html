@@ -265,25 +265,46 @@ width:90%;
 
 }
 
-/* MOBILE LANDSCAPE = LEFT SIDEBAR */
+/* DESKTOP + LARGE SCREENS */
 
-@media (orientation:landscape) and (max-width:900px){
+@media (min-width:769px){
+
+#navBar{
+top:0;
+left:0;
+width:100%;
+height:52px;
+flex-direction:row;
+justify-content:center;
+gap:16px;
+padding:0 20px;
+}
+
+.navButton{
+font-size:12px;
+letter-spacing:1.6px;
+padding:8px 12px;
+}
+
+}
+
+/* PHONE / TABLET LANDSCAPE — PUT THIS LAST SO IT WINS */
+
+@media (orientation:landscape) and (hover:none) and (pointer:coarse){
 
 #navBar{
 top:0;
 left:0;
 width:160px;
 height:100vh;
-
 flex-direction:column;
 justify-content:center;
 align-items:center;
 gap:14px;
-
 padding:20px 10px;
-
+box-sizing:border-box;
 background:black;
-
+border-right:1px solid rgba(255,255,255,0.15);
 }
 
 .navButton{
