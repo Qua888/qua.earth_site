@@ -29,7 +29,7 @@ touch-action:manipulation;
 }
 
 /* keep portal layers non-clickable except what we explicitly allow */
-body *:not(.triangle):not(#tapScreen):not(#navBar):not(#navBar *){
+body *:not(.triangle):not(#tapScreen):not(#navBar):not(#navBar *):not(#gameOverlay):not(#gameOverlay *){
 pointer-events:none;
 }
 
@@ -217,6 +217,122 @@ z-index:-1;
 100%{transform:scale(1)}
 }
 
+/* GAME OVERLAY */
+
+#gameOverlay{
+position:fixed;
+inset:0;
+background:rgba(0,0,0,0.94);
+z-index:200;
+display:none;
+pointer-events:auto;
+}
+
+#gameOverlay.active{
+display:block;
+}
+
+#gameCanvas{
+position:absolute;
+inset:0;
+width:100%;
+height:100%;
+pointer-events:none;
+}
+
+#gameUI{
+position:absolute;
+top:16px;
+left:16px;
+right:16px;
+display:flex;
+justify-content:space-between;
+align-items:flex-start;
+z-index:3;
+pointer-events:none;
+}
+
+#gameStats{
+color:white;
+font-family:Georgia,serif;
+letter-spacing:2px;
+font-size:14px;
+line-height:1.8;
+pointer-events:none;
+}
+
+#gameButtons{
+display:flex;
+gap:10px;
+pointer-events:auto;
+}
+
+.gameBtn{
+appearance:none;
+-webkit-appearance:none;
+border:1px solid rgba(255,255,255,0.28);
+background:black;
+color:white;
+font-family:Georgia,serif;
+letter-spacing:1.5px;
+font-size:12px;
+padding:10px 12px;
+cursor:pointer;
+pointer-events:auto;
+}
+
+#gameCenterMessage{
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+text-align:center;
+color:white;
+font-family:Georgia,serif;
+letter-spacing:2px;
+line-height:1.9;
+z-index:3;
+pointer-events:none;
+}
+
+#gameCenterMessage.hidden{
+display:none;
+}
+
+#touchControls{
+position:absolute;
+inset:0;
+display:none;
+z-index:2;
+pointer-events:auto;
+}
+
+#touchLeft,
+#touchRight{
+position:absolute;
+top:0;
+bottom:0;
+width:50%;
+pointer-events:auto;
+}
+
+#touchLeft{left:0;}
+#touchRight{right:0;}
+
+#touchHint{
+position:absolute;
+bottom:24px;
+left:50%;
+transform:translateX(-50%);
+color:rgba(255,255,255,0.7);
+font-family:Georgia,serif;
+letter-spacing:2px;
+font-size:12px;
+text-align:center;
+pointer-events:none;
+z-index:3;
+}
+
 /* MOBILE PORTRAIT */
 
 @media (max-width:768px) and (orientation:portrait){
@@ -261,6 +377,15 @@ width:90%;
 #comingSoon{
 font-size:12px;
 width:90%;
+}
+
+#gameStats{
+font-size:12px;
+}
+
+.gameBtn{
+font-size:11px;
+padding:8px 10px;
 }
 
 }
@@ -349,7 +474,7 @@ padding:8px 12px;
 body.landscape-mobile #navBar{
 top:0 !important;
 left:0 !important;
-width:160px !important;
+width:108px !important;
 height:100vh !important;
 
 flex-direction:column !important;
@@ -357,7 +482,7 @@ justify-content:center !important;
 align-items:center !important;
 gap:14px !important;
 
-padding:20px 10px !important;
+padding:20px 6px !important;
 box-sizing:border-box !important;
 
 background:black !important;
@@ -374,6 +499,16 @@ body.landscape-mobile #quaField{
 top:36px !important;
 left:calc(50% + 40px) !important;
 transform:translateX(-50%) !important;
+}
+
+body.landscape-mobile #touchControls{
+display:block !important;
+}
+
+@media (hover:none) and (pointer:coarse){
+#touchControls{
+display:block;
+}
 }
 
 </style>
@@ -421,6 +556,35 @@ More to come very soon...
 <source src="Qua_basecamp_New_Paradigm.mp3" type="audio/mpeg">
 </audio>
 
+<div id="gameOverlay">
+<canvas id="gameCanvas"></canvas>
+
+<div id="gameUI">
+<div id="gameStats">
+<div>FUN GAME</div>
+<div id="scoreLine">Score: 0</div>
+<div id="bestLine">Best: 0</div>
+</div>
+
+<div id="gameButtons">
+<button class="gameBtn" id="restartGameBtn">Restart</button>
+<button class="gameBtn" id="closeGameBtn">Close</button>
+</div>
+</div>
+
+<div id="gameCenterMessage">
+<div id="gameMessageTitle">Temple Runner Vortex</div>
+<div id="gameMessageText">Ride the tunnel and dodge the vortexes</div>
+</div>
+
+<div id="touchControls">
+<div id="touchLeft"></div>
+<div id="touchRight"></div>
+</div>
+
+<div id="touchHint">Tap left or right side to move</div>
+</div>
+
 <script>
 
 /* AUDIO */
@@ -463,10 +627,6 @@ alert("YouTube section coming soon")
 
 btnNFTs.addEventListener("click",()=>{
 alert("Music NFTs section coming soon")
-})
-
-btnGame.addEventListener("click",()=>{
-alert("Fun Game coming soon")
 })
 
 /* POINTER (mouse + touch) */
@@ -592,6 +752,8 @@ starCanvas.height=window.innerHeight
 
 let stars=[]
 
+function buildStars(){
+stars=[]
 for(let i=0;i<1888;i++){
 
 let direction=Math.random()<0.5?-1:1
@@ -604,6 +766,9 @@ speed:(0.1+Math.random()*0.1)*direction
 })
 
 }
+}
+
+buildStars()
 
 function drawStars(){
 
@@ -759,12 +924,503 @@ updateLayoutMode()
 window.addEventListener("resize",updateLayoutMode)
 window.addEventListener("orientationchange",updateLayoutMode)
 
+/* SIMPLE FUN GAME — CHILL OVER-THE-SHOULDER VERSION */
+
+const sunsetColors = [
+"#ff6a88",
+"#ff8a8a",
+"#ff4fd8",
+"#c88bff",
+"#ff9a66",
+"#ffd2a6"
+]
+
+const gameOverlay=document.getElementById("gameOverlay")
+const gameCanvas=document.getElementById("gameCanvas")
+const gctx=gameCanvas.getContext("2d")
+
+const scoreLine=document.getElementById("scoreLine")
+const bestLine=document.getElementById("bestLine")
+const restartGameBtn=document.getElementById("restartGameBtn")
+const closeGameBtn=document.getElementById("closeGameBtn")
+const gameCenterMessage=document.getElementById("gameCenterMessage")
+const gameMessageTitle=document.getElementById("gameMessageTitle")
+const gameMessageText=document.getElementById("gameMessageText")
+const touchLeft=document.getElementById("touchLeft")
+const touchRight=document.getElementById("touchRight")
+
+let gameRunning=false
+let gameAnimationId=0
+let score=0
+let bestScore=0
+let vortexes=[]
+let tunnelRings=[]
+let vortexSpawnTimer=0
+let lastTime=0
+let gameTime=0
+
+const player={
+lane:1,
+targetLane:1,
+x:0,
+y:0,
+size:34
+}
+
+function sizeGameCanvas(){
+gameCanvas.width=window.innerWidth
+gameCanvas.height=window.innerHeight
+}
+
+function getTunnelMetrics(){
+const w=gameCanvas.width
+const h=gameCanvas.height
+
+return{
+centerX:w/2,
+horizonY:h*0.07,
+playerY:h*0.91,
+nearSpread:Math.min(360,w*0.39),
+farSpread:Math.min(34,w*0.04)
+}
+}
+
+function getPlayerLaneX(laneIndex){
+return projectLanePosition(laneIndex,0.02).x
+}
+
+function projectLanePosition(lane,z){
+
+const m=getTunnelMetrics()
+
+const t=1-z
+const depth=Math.pow(t,0.82)
+
+const laneOffset=(lane-1)
+const spread=m.farSpread+(m.nearSpread-m.farSpread)*depth
+
+const x=m.centerX + laneOffset*spread
+const y=m.horizonY + (m.playerY-m.horizonY)*depth
+const scale=0.24 + depth*1.45
+
+return{x,y,scale}
+}
+
+function resetGame(){
+
+score=0
+vortexes=[]
+tunnelRings=[]
+vortexSpawnTimer=0
+lastTime=0
+
+player.lane=1
+player.targetLane=1
+player.x=getPlayerLaneX(1)
+player.y=getTunnelMetrics().playerY
+
+for(let i=0;i<6;i++){
+tunnelRings.push({
+z:i/13
+})
+}
+
+gameRunning=true
+
+gameMessageTitle.textContent="Temple Runner Vortex"
+gameMessageText.innerHTML="Dodge the vortexes"
+gameCenterMessage.classList.add("hidden")
+}
+
+function openGame(){
+gameOverlay.classList.add("active")
+sizeGameCanvas()
+resetGame()
+cancelAnimationFrame(gameAnimationId)
+gameLoop(0)
+}
+
+function closeGame(){
+gameRunning=false
+cancelAnimationFrame(gameAnimationId)
+gameOverlay.classList.remove("active")
+}
+
+function moveLeft(){
+player.targetLane=Math.max(0,player.targetLane-1)
+}
+
+function moveRight(){
+player.targetLane=Math.min(2,player.targetLane+1)
+}
+
+function spawnVortex(){
+const lane=Math.floor(Math.random()*3)
+
+vortexes.push({
+lane:lane,
+z:1,
+spin:0,
+spinSpeed:-0.035,
+wobblePhase:Math.random()*Math.PI*2,
+wobbleSpeed:0.035,
+wobbleAmount:8+Math.random()*10,
+innerSpin:0,
+innerSpinSpeed:-0.08
+})
+}
+
+function updateGame(delta){
+
+const m=getTunnelMetrics()
+
+player.y=m.playerY
+
+const targetX=getPlayerLaneX(player.targetLane)
+player.x += (targetX-player.x)*0.22
+
+const difficulty=Math.min(1.55,1 + score*0.02)
+const tunnelSpeed=0.00043 * difficulty
+
+vortexSpawnTimer += delta
+if(vortexSpawnTimer > Math.max(540,980 - score*10)){
+spawnVortex()
+vortexSpawnTimer = 0
+}
+
+tunnelRings.forEach(r=>{
+r.z -= tunnelSpeed * delta * 0.78
+if(r.z < 0){
+r.z = 1
+}
+})
+
+for(let i=vortexes.length-1;i>=0;i--){
+
+const v=vortexes[i]
+
+v.z -= tunnelSpeed * delta * 1.05
+v.spin += v.spinSpeed * difficulty
+v.wobblePhase += v.wobbleSpeed * difficulty
+v.innerSpin += v.innerSpinSpeed * difficulty
+
+const p=projectLanePosition(v.lane,v.z)
+const vSize=20 + 70*Math.pow(1-v.z,1.33)
+
+if(v.z < 0){
+vortexes.splice(i,1)
+score++
+continue
+}
+
+const dx=player.x-p.x
+const dy=player.y-p.y
+const dist=Math.sqrt(dx*dx + dy*dy)
+
+if(v.z < 0.16 && dist < vSize + player.size*0.46){
+gameOver()
+return
+}
+}
+
+scoreLine.textContent="Score: " + score
+bestLine.textContent="Best: " + bestScore
+}
+
+function drawTrianglePlayer(){
+
+gctx.save()
+gctx.translate(player.x,player.y)
+
+const grad=gctx.createLinearGradient(0,player.size*1.0,0,-player.size*1.25)
+grad.addColorStop(0,"#a06bff")
+grad.addColorStop(0.45,"#ff4fd8")
+grad.addColorStop(1,"#ff9a66")
+
+gctx.beginPath()
+gctx.moveTo(0,-player.size*1.25)
+gctx.lineTo(-player.size*0.72,player.size*0.95)
+gctx.lineTo(player.size*0.72,player.size*0.95)
+gctx.closePath()
+
+gctx.fillStyle=grad
+gctx.shadowBlur=22
+gctx.shadowColor="rgba(255,120,210,0.65)"
+gctx.fill()
+
+gctx.beginPath()
+gctx.moveTo(0,-player.size*0.72)
+gctx.lineTo(-player.size*0.2,player.size*0.16)
+gctx.lineTo(player.size*0.2,player.size*0.16)
+gctx.closePath()
+gctx.fillStyle="rgba(255,255,255,0.22)"
+gctx.fill()
+
+gctx.restore()
+}
+
+function drawTunnelBackground(){
+
+const w=gameCanvas.width
+const h=gameCanvas.height
+const m=getTunnelMetrics()
+
+gctx.clearRect(0,0,w,h)
+
+const bg=gctx.createLinearGradient(0,0,0,h)
+bg.addColorStop(0,"rgba(18,0,28,1)")
+bg.addColorStop(0.32,"rgba(10,0,18,1)")
+bg.addColorStop(0.68,"rgba(4,0,8,1)")
+bg.addColorStop(1,"rgba(0,0,0,1)")
+gctx.fillStyle=bg
+gctx.fillRect(0,0,w,h)
+
+const glow=gctx.createRadialGradient(
+m.centerX,m.horizonY,8,
+m.centerX,m.playerY,h*1.08
+)
+glow.addColorStop(0,"rgba(255,120,190,0.22)")
+glow.addColorStop(0.34,"rgba(180,90,255,0.11)")
+glow.addColorStop(0.76,"rgba(80,40,140,0.05)")
+glow.addColorStop(1,"rgba(0,0,0,0)")
+gctx.fillStyle=glow
+gctx.fillRect(0,0,w,h)
+
+for(let lane=0;lane<3;lane++){
+
+const top=projectLanePosition(lane,1)
+const bottom=projectLanePosition(lane,0.02)
+
+gctx.beginPath()
+gctx.moveTo(top.x,top.y)
+gctx.lineTo(bottom.x,bottom.y)
+gctx.strokeStyle="rgba(255,255,255,0.1)"
+gctx.lineWidth=2.2
+gctx.stroke()
+}
+
+tunnelRings.forEach(r=>{
+
+const p=projectLanePosition(1,r.z)
+const depth=Math.pow(1-r.z,1.1)
+const radius=Math.max(10,16 + depth*Math.min(w,h)*0.56)
+const alpha=0.24 - depth*0.09
+
+gctx.beginPath()
+gctx.arc(m.centerX,p.y,radius,0,Math.PI*2)
+const color = sunsetColors[Math.floor((r.z*10 + gameTime*0.0005) % sunsetColors.length)]
+
+gctx.strokeStyle = color
+gctx.globalAlpha = Math.max(0.05,alpha)
+gctx.lineWidth=2 + depth*1.2
+gctx.stroke()
+gctx.globalAlpha = 1
+})
+
+gctx.beginPath()
+gctx.arc(m.centerX,m.horizonY,16,0,Math.PI*2)
+gctx.fillStyle="rgba(255,255,255,0.18)"
+gctx.fill()
+}
+
+function drawVortex(v){
+
+const p=projectLanePosition(v.lane,v.z)
+const size=20 + 70*Math.pow(1-v.z,1.33)
+const alpha=0.32 + (1-v.z)*0.58
+
+const twirlX=Math.sin(v.spin*1.4 + v.wobblePhase) * v.wobbleAmount * (1-v.z)
+const twirlY=Math.cos(v.spin*0.9 + v.wobblePhase) * v.wobbleAmount * 0.35 * (1-v.z)
+
+gctx.save()
+gctx.translate(p.x + twirlX, p.y + twirlY)
+gctx.rotate(v.spin)
+
+/* OUTER RINGS */
+
+for(let i=0;i<4;i++){
+
+const r=size-(i*size*0.18)
+
+const ringGrad=gctx.createLinearGradient(-r,-r,r,r)
+ringGrad.addColorStop(0,`rgba(255,106,136,${Math.max(0.16,alpha-(i*0.12))})`)
+ringGrad.addColorStop(0.35,`rgba(255,79,216,${Math.max(0.16,alpha-(i*0.14))})`)
+ringGrad.addColorStop(0.7,`rgba(160,107,255,${Math.max(0.14,alpha-(i*0.16))})`)
+ringGrad.addColorStop(1,`rgba(255,190,220,${Math.max(0.12,alpha-(i*0.18))})`)
+
+gctx.beginPath()
+gctx.arc(0,0,r,0,Math.PI*2)
+gctx.strokeStyle=ringGrad
+gctx.lineWidth=Math.max(2,size*0.07)
+gctx.lineCap="round"
+gctx.shadowBlur=14
+gctx.shadowColor="pink"
+gctx.stroke()
+
+gctx.rotate(0.6)
+}
+
+/* PHI-LIKE INNER SPIRALS */
+
+for(let s=0;s<3;s++){
+
+gctx.save()
+gctx.rotate(v.innerSpin + s*(Math.PI*2/3))
+
+const startT=0.55
+const endT=6.9
+const baseRadius=size*0.11
+const growth=0.16
+
+gctx.beginPath()
+
+let firstPoint=true
+
+for(let t=startT;t<=endT;t+=0.08){
+
+const spiralRadius=baseRadius * Math.exp(growth*(t-startT))
+
+if(spiralRadius > size*0.72) break
+
+const x=Math.cos(t) * spiralRadius
+const y=Math.sin(t) * spiralRadius * 0.92
+
+if(firstPoint){
+gctx.moveTo(x,y)
+firstPoint=false
+}else{
+gctx.lineTo(x,y)
+}
+
+}
+
+gctx.strokeStyle=`rgba(255,255,255,${Math.max(0.16,alpha*0.95)})`
+gctx.lineWidth=Math.max(1.4,size*0.03)
+gctx.lineCap="round"
+gctx.shadowBlur=10
+gctx.shadowColor="rgba(255,255,255,0.85)"
+gctx.stroke()
+
+gctx.restore()
+}
+
+/* CORE */
+
+const coreGrad=gctx.createRadialGradient(0,0,1,0,0,size*0.24)
+coreGrad.addColorStop(0,"rgba(255,255,255,0.98)")
+coreGrad.addColorStop(0.45,"rgba(255,210,240,0.9)")
+coreGrad.addColorStop(1,"rgba(255,120,210,0)")
+
+gctx.beginPath()
+gctx.arc(0,0,size*0.15,0,Math.PI*2)
+gctx.fillStyle=coreGrad
+gctx.fill()
+
+gctx.restore()
+}
+
+function drawGame(){
+drawTunnelBackground()
+vortexes.forEach(drawVortex)
+drawTrianglePlayer()
+}
+
+function gameLoop(timestamp){
+
+if(!gameRunning){
+drawGame()
+return
+}
+
+if(!lastTime){
+lastTime=timestamp
+}
+
+const delta=timestamp-lastTime
+lastTime=timestamp
+gameTime=timestamp
+
+updateGame(delta)
+drawGame()
+
+gameAnimationId=requestAnimationFrame(gameLoop)
+}
+
+function gameOver(){
+gameRunning=false
+bestScore=Math.max(bestScore,score)
+bestLine.textContent="Best: " + bestScore
+
+gameMessageTitle.textContent="Game Over"
+gameMessageText.innerHTML="Score: " + score + "<br>Tap Restart to go again"
+gameCenterMessage.classList.remove("hidden")
+}
+
+btnGame.addEventListener("click",()=>{
+openGame()
+})
+
+restartGameBtn.addEventListener("click",()=>{
+resetGame()
+cancelAnimationFrame(gameAnimationId)
+gameLoop(0)
+})
+
+closeGameBtn.addEventListener("click",()=>{
+closeGame()
+})
+
+window.addEventListener("keydown",(e)=>{
+
+if(!gameOverlay.classList.contains("active")){
+return
+}
+
+if(e.key==="ArrowLeft"){
+e.preventDefault()
+moveLeft()
+}
+
+if(e.key==="ArrowRight"){
+e.preventDefault()
+moveRight()
+}
+
+if(e.key==="Escape"){
+e.preventDefault()
+closeGame()
+}
+
+})
+
+touchLeft.addEventListener("pointerdown",(e)=>{
+e.preventDefault()
+moveLeft()
+})
+
+touchRight.addEventListener("pointerdown",(e)=>{
+e.preventDefault()
+moveRight()
+})
+
 /* RESIZE */
 
 window.addEventListener("resize",()=>{
 
 starCanvas.width=window.innerWidth
 starCanvas.height=window.innerHeight
+buildStars()
+updateLayoutMode()
+sizeGameCanvas()
+
+})
+
+window.addEventListener("orientationchange",()=>{
+
+setTimeout(()=>{
+updateLayoutMode()
+sizeGameCanvas()
+},120)
 
 })
 
