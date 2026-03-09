@@ -279,6 +279,8 @@ pointer.x=e.clientX
 pointer.y=e.clientY
 })
 
+window.addEventListener("pointerdown",(e)=>{pointer.x=e.clientX; pointer.y=e.clientY})
+
 function updateAudio(){
 
 analyser.getByteFrequencyData(audioData)
