@@ -61,7 +61,7 @@ cursor:pointer;
 <button onclick="location.href='index.html'">Return</button>
 </div>
 
-<audio id="music" loop preload="auto">
+<audio id="music" loop>
 <source src="Track2_NewSong.mp3" type="audio/mpeg">
 </audio>
 
@@ -76,10 +76,8 @@ music.volume=0.16
 
 const audioCtx=new (window.AudioContext||window.webkitAudioContext)()
 const analyser=audioCtx.createAnalyser()
-const source=audioCtx.createMediaElementSource(music)
 
-source.connect(analyser)
-analyser.connect(audioCtx.destination)
+let source=null
 
 analyser.fftSize=2048
 const data=new Uint8Array(analyser.frequencyBinCount)
@@ -87,19 +85,43 @@ const data=new Uint8Array(analyser.frequencyBinCount)
 let bassLevel=0
 let highLevel=0
 
+function connectAudio(){
+
+if(!source){
+
+source=audioCtx.createMediaElementSource(music)
+
+source.connect(analyser)
+analyser.connect(audioCtx.destination)
+
+}
+
+}
+
 window.addEventListener("load",async ()=>{
+
 try{
+
+connectAudio()
+
 await audioCtx.resume()
 await music.play()
-}catch(e){}
-})
 
-/* MOBILE AUDIO UNLOCK */
+}catch(e){}
+
+})
 
 function unlockAudio(){
 
+if(audioCtx.state==="suspended"){
 audioCtx.resume()
-music.play()
+}
+
+if(!source){
+source=audioCtx.createMediaElementSource(music)
+source.connect(analyser)
+analyser.connect(audioCtx.destination)
+}
 
 window.removeEventListener("touchstart",unlockAudio)
 window.removeEventListener("click",unlockAudio)
@@ -109,7 +131,7 @@ window.removeEventListener("click",unlockAudio)
 window.addEventListener("touchstart",unlockAudio,{once:true})
 window.addEventListener("click",unlockAudio,{once:true})
 
-/* STARFIELD SETUP */
+/* STARFIELD */
 
 const canvas=document.getElementById("stars")
 const ctx=canvas.getContext("2d")
@@ -133,7 +155,7 @@ dir:Math.random()<0.5?1:-1
 }
 buildStars()
 
-/* POINTER / TOUCH */
+/* POINTER */
 
 let pointerX=canvas.width/2
 let pointerY=canvas.height/2
@@ -163,6 +185,9 @@ updatePointer(e.touches[0].clientX,e.touches[0].clientY)
 
 const scene=new THREE.Scene()
 
+const portalGroup=new THREE.Group()
+scene.add(portalGroup)
+
 const camera=new THREE.PerspectiveCamera(
 60,
 window.innerWidth/window.innerHeight,
@@ -177,7 +202,7 @@ renderer.setSize(window.innerWidth,window.innerHeight)
 renderer.domElement.id="threeCanvas"
 document.body.appendChild(renderer.domElement)
 
-/* STAR REFLECTION TEXTURE */
+/* STAR REFLECTION */
 
 const starTexture=new THREE.CanvasTexture(canvas)
 starTexture.mapping=THREE.EquirectangularReflectionMapping
@@ -210,11 +235,11 @@ clearcoatRoughness:0.05
 })
 
 const sphere=new THREE.Mesh(geometry,material)
-scene.add(sphere)
+portalGroup.add(sphere)
 
 sphere.rotation.z=0.05
 
-/* CLOUD LAYER */
+/* CLOUDS */
 
 const cloudGeometry=new THREE.SphereGeometry(0.505,64,64)
 const cloudCanvas=document.createElement("canvas")
@@ -232,11 +257,11 @@ const cloudTexture=new THREE.CanvasTexture(cloudCanvas)
 const cloudMaterial=new THREE.MeshBasicMaterial({
 map:cloudTexture,
 transparent:true,
-opacity:0.30
+opacity:0.23
 })
 
 const clouds=new THREE.Mesh(cloudGeometry,cloudMaterial)
-scene.add(clouds)
+portalGroup.add(clouds)
 
 /* GLOW */
 
@@ -250,7 +275,7 @@ blending:THREE.AdditiveBlending
 })
 
 const glow=new THREE.Mesh(glowGeometry,glowMaterial)
-scene.add(glow)
+portalGroup.add(glow)
 
 /* PLASMA */
 
@@ -285,14 +310,14 @@ plasmaMaterial
 )
 
 plasma.position.z=-0.05
-scene.add(plasma)
+portalGroup.add(plasma)
 
 const plasma2=plasma.clone()
 
 plasma2.position.z=0.05
 plasma2.rotation.y=Math.PI
 
-scene.add(plasma2)
+portalGroup.add(plasma2)
 
 /* LIGHT */
 
@@ -302,7 +327,21 @@ scene.add(light)
 
 camera.position.z=3
 
-/* CLICK SPHERE TO PLAY */
+/* MOBILE PORTAL ALIGNMENT */
+
+function updatePortalAlignment(){
+
+if(window.innerWidth < 768){
+portalGroup.position.y = -0.18
+}else{
+portalGroup.position.y = 0
+}
+
+}
+
+updatePortalAlignment()
+
+/* CLICK SPHERE */
 
 const raycaster=new THREE.Raycaster()
 const mouse=new THREE.Vector2()
@@ -338,8 +377,6 @@ function animate(){
 
 requestAnimationFrame(animate)
 
-/* AUDIO */
-
 analyser.getByteFrequencyData(data)
 
 let bassSum=0,bassCount=0
@@ -363,8 +400,6 @@ highCount++
 
 bassLevel=(bassSum/bassCount)/255
 highLevel=(highSum/highCount)/255
-
-/* STARFIELD */
 
 starAngle+=0.0003
 
@@ -414,17 +449,13 @@ s.y+=dyp/distp*force*7
 }
 
 ctx.beginPath()
-
 ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2)
-
 ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`
 ctx.fill()
 
 })
 
 starTexture.needsUpdate=true
-
-/* SPHERE ROTATION */
 
 rotationY+=0.0015
 
@@ -433,8 +464,6 @@ sphere.rotation.x=Math.sin(rotationY*0.2)*0.1
 
 clouds.rotation.y=-rotationY*0.6
 clouds.rotation.x=Math.sin(rotationY*0.15)*0.1
-
-/* BASS */
 
 if(bassLevel>bassPulse){
 bassPulse=bassLevel
@@ -454,17 +483,8 @@ plasma.rotation.x+=0.00035
 plasma2.rotation.y-=0.0016
 plasma2.rotation.x-=0.00035
 
-plasma.scale.set(
-scale*1.2+Math.sin(rotationY*2)*0.03,
-scale*1.2+Math.sin(rotationY*2)*0.03,
-scale*1.2+Math.sin(rotationY*2)*0.03
-)
-
-plasma2.scale.set(
-scale*1.2+Math.sin(rotationY*2)*0.03,
-scale*1.2+Math.sin(rotationY*2)*0.03,
-scale*1.2+Math.sin(rotationY*2)*0.03
-)
+plasma.scale.set(scale*1.2,scale*1.2,scale*1.2)
+plasma2.scale.set(scale*1.2,scale*1.2,scale*1.2)
 
 renderer.render(scene,camera)
 
@@ -489,9 +509,11 @@ buildStars()
 pointerX=canvas.width/2
 pointerY=canvas.height/2
 
+updatePortalAlignment()
+
 })
 
-/* ORIENTATION FIX */
+/* ORIENTATION */
 
 window.addEventListener("orientationchange",()=>{
 
@@ -509,6 +531,8 @@ buildStars()
 
 pointerX=canvas.width/2
 pointerY=canvas.height/2
+
+updatePortalAlignment()
 
 },200)
 
