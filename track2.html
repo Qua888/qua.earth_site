@@ -155,38 +155,37 @@ analyser.connect(audioCtx.destination)
 
 /* TAP SCREEN AUDIO UNLOCK */
 
-const tapOverlay = document.getElementById("tapOverlay")
-let experienceStarted = false
+const tapOverlay = document.getElementById("tapOverlay");
+let experienceStarted = false;
 
-function startExperience(){
+function startExperience() {
+  if (experienceStarted) return;
+  experienceStarted = true;
 
-  // Prevent double execution (click + touchstart on some devices)
-  if (experienceStarted) return
-  experienceStarted = true
+  // Start playing the track immediately
+  music.currentTime = 0;
+  music.play().catch(err => {
+    console.warn("Audio play prevented by browser:", err);
+  });
 
-  // Resume the audio context before anything else
-  audioCtx.resume().then(() => {
+  tapOverlay.style.display = "none";
 
-    // Attach the audio element to the analyser and destination
-    if (!source) {
-      source = audioCtx.createMediaElementSource(music)
-      source.connect(analyser)
-      analyser.connect(audioCtx.destination)
+  // After a brief delay, resume the AudioContext and connect the analyser
+  setTimeout(() => {
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume();
     }
-
-    // Reset the track and play it
-    music.currentTime = 0
-    music.play().catch(err => {
-      console.warn("Audio play prevented by browser:", err)
-    })
-
-  })
-
-  tapOverlay.style.display = "none"
+    if (!source) {
+      source = audioCtx.createMediaElementSource(music);
+      // Connect both the analyser and destination after playback has begun
+      source.connect(analyser);
+      analyser.connect(audioCtx.destination);
+    }
+  }, 200);
 }
 
-tapOverlay.addEventListener("click", startExperience)
-tapOverlay.addEventListener("touchstart", startExperience)
+tapOverlay.addEventListener("click", startExperience);
+tapOverlay.addEventListener("touchstart", startExperience);
 
 /* STARFIELD */
 
