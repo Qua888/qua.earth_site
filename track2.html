@@ -150,29 +150,22 @@ analyser.connect(audioCtx.destination)
 
 /* TAP SCREEN AUDIO UNLOCK */
 
-const tapOverlay = document.getElementById("tapOverlay")
-let experienceStarted = false
+const tapOverlay=document.getElementById("tapOverlay")
 
 function startExperience(){
 
-if(experienceStarted) return
-experienceStarted = true
-
 connectAudio()
 
-audioCtx.resume().then(()=>{
+audioCtx.resume()
 
-music.currentTime = 0
 music.play().catch(()=>{})
 
-})
-
-tapOverlay.style.display = "none"
+tapOverlay.style.display="none"
 
 }
 
-tapOverlay.addEventListener("click", startExperience)
-tapOverlay.addEventListener("touchstart", startExperience)
+tapOverlay.addEventListener("click",startExperience)
+tapOverlay.addEventListener("touchstart",startExperience)
 
 /* STARFIELD */
 
@@ -303,7 +296,7 @@ const cloudTexture=new THREE.CanvasTexture(cloudCanvas)
 const cloudMaterial=new THREE.MeshBasicMaterial({
 map:cloudTexture,
 transparent:true,
-opacity:0.23
+opacity:0.34
 })
 
 const clouds=new THREE.Mesh(cloudGeometry,cloudMaterial)
