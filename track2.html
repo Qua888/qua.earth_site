@@ -123,6 +123,9 @@ source.connect(analyser)
 analyser.connect(audioCtx.destination)
 }
 
+/* start music on first tap for iOS */
+music.play().catch(()=>{})
+
 window.removeEventListener("touchstart",unlockAudio)
 window.removeEventListener("click",unlockAudio)
 
