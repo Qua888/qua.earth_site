@@ -118,9 +118,7 @@ Symbol zero signifies the infinite womb where “no-thing” is in the capacity 
 <button onclick="location.href='index.html'">Return</button>
 </div>
 
-<audio id="music" loop playsinline>
-<source src="Track2_NewSong.mp3" type="audio/mpeg">
-</audio>
+<audio id="music" loop playsinline></audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 
@@ -162,9 +160,11 @@ const tapOverlay = document.getElementById("tapOverlay")
 
 function startExperience(){
 
-audioCtx.resume().then(()=>{
+music.src = "Track2_NewSong.mp3"
 
 connectAudio()
+
+audioCtx.resume()
 
 music.currentTime = 0
 music.play().catch(()=>{})
