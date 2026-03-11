@@ -20,7 +20,7 @@ body{
 #stars{
   position:absolute;
   z-index:1;
-  pointer-events:none; /* never intercept taps */
+  pointer-events:none;
 }
 
 #threeCanvas{
@@ -32,13 +32,22 @@ body{
   pointer-events:none; /* enabled after start */
 }
 
-/* TAP ACTIVATION SCREEN */
+/* FULL-SCREEN START CATCHER (tap anywhere) */
+#startCatcher{
+  position:fixed;
+  inset:0;
+  z-index:50; /* above everything */
+  pointer-events:auto;
+  touch-action:manipulation;
+  -webkit-user-select:none;
+  user-select:none;
+  background:transparent;
+}
+
+/* TAP TEXT SCREEN (visual only) */
 #tapOverlay{
   position:fixed;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
+  inset:0;
   background:black;
 
   display:flex;
@@ -52,11 +61,7 @@ body{
   padding:40px;
   box-sizing:border-box;
 
-  touch-action:manipulation;
-  -webkit-user-select:none;
-  user-select:none;
-
-  pointer-events:auto; /* must receive taps */
+  pointer-events:none; /* IMPORTANT: don't rely on it for taps */
 }
 
 #tapText{
@@ -91,6 +96,10 @@ button{
 
 <body>
 
+<!-- This catches the first tap ANYWHERE -->
+<div id="startCatcher" aria-label="Tap anywhere to start"></div>
+
+<!-- This is just the visual overlay -->
 <div id="tapOverlay">
   <div id="tapText">
     <p>
@@ -122,6 +131,10 @@ button{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 
 <script>
+function isPortraitMobile(){
+  return window.innerWidth < 768 && window.innerHeight > window.innerWidth;
+}
+
 /* =========
    STARFIELD
    ========= */
@@ -146,7 +159,6 @@ function buildStars(){
     });
   }
 }
-
 buildStars();
 
 /* POINTER */
@@ -185,7 +197,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth,window.innerHeight);
 
 renderer.domElement.id = "threeCanvas";
-renderer.domElement.style.pointerEvents = "none"; // enable after audio start
+renderer.domElement.style.pointerEvents = "none";
 document.body.appendChild(renderer.domElement);
 
 /* STAR REFLECTION */
@@ -296,12 +308,9 @@ const plasma = new THREE.Mesh(
   new THREE.SphereGeometry(0.72,64,64),
   plasmaMaterial
 );
-plasma.position.z = -0.05;
 portalGroup.add(plasma);
 
 const plasma2 = plasma.clone();
-plasma2.position.z = 0.05;
-plasma2.rotation.y = Math.PI;
 portalGroup.add(plasma2);
 
 /* LIGHT */
@@ -334,12 +343,11 @@ let data = null;
 let bassLevel = 0;
 let highLevel = 0;
 
-/* TAP SCREEN AUDIO UNLOCK (iPhone-safe + tap-safe) */
-
-const tapOverlay = document.getElementById("tapOverlay");
-
 let started = false;
 let ignoreCanvasClicksUntil = 0;
+
+const startCatcher = document.getElementById("startCatcher");
+const tapOverlay = document.getElementById("tapOverlay");
 
 async function startExperience(e){
   if(started) return;
@@ -373,15 +381,20 @@ async function startExperience(e){
   }
 
   started = true;
-  tapOverlay.style.display = "none";
   ignoreCanvasClicksUntil = performance.now() + 900;
 
+  // Hide visuals + stop catching gestures
+  tapOverlay.style.display = "none";
+  startCatcher.style.display = "none";
+
+  // Enable interaction with WebGL now
   renderer.domElement.style.pointerEvents = "auto";
 }
 
-tapOverlay.addEventListener("pointerdown", startExperience, { passive:false });
-tapOverlay.addEventListener("touchstart", startExperience, { passive:false });
-tapOverlay.addEventListener("click", startExperience, { passive:false });
+// Catch the FIRST gesture anywhere on the screen
+startCatcher.addEventListener("pointerdown", startExperience, { passive:false });
+startCatcher.addEventListener("touchstart", startExperience, { passive:false });
+startCatcher.addEventListener("click", startExperience, { passive:false });
 
 /* CLICK SPHERE */
 
@@ -454,7 +467,8 @@ function animate(){
 
   const cx = canvas.width/2;
   const cy = canvas.height/2;
-  const bubbleRadius = 333;
+
+  const bubbleRadius = isPortraitMobile() ? 250 : 333;
 
   stars.forEach(s=>{
 
@@ -487,8 +501,9 @@ function animate(){
 
     if(distp<bubbleRadius && distp>0.001){
       const force=(bubbleRadius-distp)/bubbleRadius;
-      s.x+=dxp/distp*force*7;
-      s.y+=dyp/distp*force*7;
+      const push = isPortraitMobile() ? 5.2 : 7;
+      s.x+=dxp/distp*force*push;
+      s.y+=dyp/distp*force*push;
     }
 
     ctx.beginPath();
@@ -524,7 +539,14 @@ function animate(){
   plasma2.rotation.y -= 0.0016;
   plasma2.rotation.x -= 0.00035;
 
-  let plasmaSize = (window.innerWidth<768) ? 1.0 : 1.2;
+  const portrait = isPortraitMobile();
+  const basePlasmaSize = (window.innerWidth < 768) ? 1.0 : 1.2;
+  const plasmaSize = portrait ? 0.82 : basePlasmaSize;
+
+  const zSep = portrait ? 0.11 : 0.05;
+  plasma.position.z = -zSep;
+  plasma2.position.z = zSep;
+
   plasma.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
   plasma2.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
 
