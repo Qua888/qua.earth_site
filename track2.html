@@ -162,13 +162,23 @@ if(audioCtx.state === "suspended"){
 audioCtx.resume()
 }
 
-music.play()
+// start muted so mobile allows playback
+music.muted = true
+
+const playPromise = music.play()
+
+if(playPromise !== undefined){
+playPromise.then(()=>{
+
+// unmute immediately after playback begins
+music.muted = false
+
+}).catch(()=>{})
+}
 
 tapOverlay.style.display = "none"
 
 }
-
-tapOverlay.addEventListener("pointerdown", startExperience)
 
 /* STARFIELD */
 
