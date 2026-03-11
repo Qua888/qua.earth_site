@@ -162,26 +162,27 @@ function startExperience() {
   if (experienceStarted) return;
   experienceStarted = true;
 
-  // Start playing the track immediately
+  // Resume context and start playback immediately
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
   music.currentTime = 0;
   music.play().catch(err => {
-    console.warn("Audio play prevented by browser:", err);
+    console.warn("Audio play prevented:", err);
   });
 
-  tapOverlay.style.display = "none";
-
-  // After a brief delay, resume the AudioContext and connect the analyser
-  setTimeout(() => {
-    if (audioCtx.state === "suspended") {
-      audioCtx.resume();
-    }
+  // When the audio can play, connect it into the Web Audio graph
+  music.addEventListener('canplay', () => {
     if (!source) {
       source = audioCtx.createMediaElementSource(music);
-      // Connect both the analyser and destination after playback has begun
+      // Split the signal: analyser for visualization, destination for speakers
       source.connect(analyser);
+      source.connect(audioCtx.destination);
       analyser.connect(audioCtx.destination);
     }
-  }, 200);
+  }, { once: true });
+
+  tapOverlay.style.display = 'none';
 }
 
 tapOverlay.addEventListener("click", startExperience);
