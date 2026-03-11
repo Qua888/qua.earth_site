@@ -32,28 +32,19 @@ body{
   pointer-events:none; /* enabled after start */
 }
 
-/* TAP TEXT SCREEN (visual only) */
+/* VISUAL OVERLAY */
 #tapOverlay{
   position:fixed;
   inset:0;
   background:black;
-
   display:flex;
   justify-content:center;
   align-items:center;
-
   color:white;
   z-index:20;
   font-family:Georgia,serif;
-
   padding:40px;
   box-sizing:border-box;
-
-  /* overlay should NOT block the document capture listeners */
-  pointer-events:none;
-
-  -webkit-user-select:none;
-  user-select:none;
 }
 
 #tapText{
@@ -63,6 +54,29 @@ body{
   line-height:1.6;
   font-size:18px;
   margin:auto;
+}
+
+#startBtn{
+  margin-top:18px;
+  border:1px solid rgba(255,255,255,.35);
+  background:black;
+  color:white;
+  font-family:Georgia,serif;
+  letter-spacing:2px;
+  font-size:12px;
+  padding:12px 18px;
+  border-radius:10px;
+  cursor:pointer;
+}
+
+/* FULLSCREEN TAP CATCHER */
+#startCatcher{
+  position:fixed;
+  inset:0;
+  z-index:50; /* above everything */
+  background:transparent;
+  pointer-events:auto;
+  touch-action:manipulation;
 }
 
 #return{
@@ -83,10 +97,27 @@ button{
   padding:10px 16px;
   cursor:pointer;
 }
+
+#debug{
+  position:fixed;
+  left:10px;
+  right:10px;
+  bottom:8px;
+  z-index:9999;
+  color:rgba(255,255,255,.85);
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+  line-height:1.3;
+  pointer-events:none;
+  white-space:pre-wrap;
+}
 </style>
 </head>
 
 <body>
+
+<!-- catches taps ANYWHERE -->
+<div id="startCatcher"></div>
 
 <div id="tapOverlay">
   <div id="tapText">
@@ -101,8 +132,8 @@ button{
       1 qua 0 — consciousness as infinity.
     </p>
 
-    <br>
-    <p>(tap anywhere)</p>
+    <p style="margin-top:14px;">(tap anywhere) — if tapping fails, press START</p>
+    <button id="startBtn" type="button">START</button>
   </div>
 </div>
 
@@ -111,6 +142,8 @@ button{
 <div id="return">
   <button onclick="location.href='index.html'">Return</button>
 </div>
+
+<div id="debug">debug: waiting for touch…</div>
 
 <audio id="music" loop playsinline preload="auto">
   <source src="Track2_NewSong.mp3" type="audio/mpeg">
@@ -123,18 +156,19 @@ function isPortraitMobile(){
   return window.innerWidth < 768 && window.innerHeight > window.innerWidth;
 }
 
-/* =========
-   STARFIELD
-   ========= */
+const debugEl = document.getElementById("debug");
+function dbg(msg){
+  debugEl.textContent = msg;
+}
+
+/* ========= STARFIELD ========= */
 
 const canvas = document.getElementById("stars");
 const ctx = canvas.getContext("2d");
-
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 let stars = [];
-
 function buildStars(){
   stars = [];
   for(let i=0;i<1888;i++){
@@ -150,65 +184,45 @@ function buildStars(){
 buildStars();
 
 /* POINTER */
-
 let pointerX = canvas.width/2;
 let pointerY = canvas.height/2;
-
-function updatePointer(x,y){
-  pointerX = x;
-  pointerY = y;
-}
+function updatePointer(x,y){ pointerX=x; pointerY=y; }
 
 window.addEventListener("mousemove",(e)=> updatePointer(e.clientX,e.clientY));
 window.addEventListener("click",(e)=> updatePointer(e.clientX,e.clientY));
 window.addEventListener("touchstart",(e)=> updatePointer(e.touches[0].clientX,e.touches[0].clientY), {passive:true});
 window.addEventListener("touchmove",(e)=> updatePointer(e.touches[0].clientX,e.touches[0].clientY), {passive:true});
 
-/* ===========
-   THREE SCENE
-   =========== */
+/* ========= THREE ========= */
 
 const scene = new THREE.Scene();
-
 const portalGroup = new THREE.Group();
 scene.add(portalGroup);
 
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth/window.innerHeight,
-  0.1,
-  1000
-);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
 
 const renderer = new THREE.WebGLRenderer({alpha:true});
 renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setSize(window.innerWidth,window.innerHeight);
-
+renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.domElement.id = "threeCanvas";
-renderer.domElement.style.pointerEvents = "none"; // enable after start
+renderer.domElement.style.pointerEvents = "none";
 document.body.appendChild(renderer.domElement);
-
-/* STAR REFLECTION */
 
 const starTexture = new THREE.CanvasTexture(canvas);
 starTexture.mapping = THREE.EquirectangularReflectionMapping;
 
 /* SPHERE */
-
 const sphereTextureCanvas = document.createElement("canvas");
 sphereTextureCanvas.width = 512;
 sphereTextureCanvas.height = 512;
 const stx = sphereTextureCanvas.getContext("2d");
-
 for(let i=0;i<6000;i++){
   stx.fillStyle="rgba(255,255,255,0.02)";
   stx.fillRect(Math.random()*512,Math.random()*512,2,2);
 }
-
 const sphereTexture = new THREE.CanvasTexture(sphereTextureCanvas);
 
 const geometry = new THREE.SphereGeometry(0.5,64,64);
-
 const material = new THREE.MeshPhysicalMaterial({
   color:0x106888,
   metalness:1,
@@ -219,108 +233,73 @@ const material = new THREE.MeshPhysicalMaterial({
   clearcoat:1,
   clearcoatRoughness:0.05
 });
-
-const sphere = new THREE.Mesh(geometry,material);
+const sphere = new THREE.Mesh(geometry, material);
 portalGroup.add(sphere);
-
 sphere.rotation.z = 0.05;
 
 /* CLOUDS */
-
 const cloudGeometry = new THREE.SphereGeometry(0.505,64,64);
-
 const cloudCanvas = document.createElement("canvas");
 cloudCanvas.width = 512;
 cloudCanvas.height = 512;
-
 const cloudCtx = cloudCanvas.getContext("2d");
-
 for(let i=0;i<20000;i++){
   cloudCtx.fillStyle="rgba(255,255,255,0.3)";
   cloudCtx.fillRect(Math.random()*512,Math.random()*512,2,2);
 }
-
 const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
-
-const cloudMaterial = new THREE.MeshBasicMaterial({
-  map:cloudTexture,
-  transparent:true,
-  opacity:0.23
-});
-
-const clouds = new THREE.Mesh(cloudGeometry,cloudMaterial);
+const cloudMaterial = new THREE.MeshBasicMaterial({ map:cloudTexture, transparent:true, opacity:0.23 });
+const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
 portalGroup.add(clouds);
 
 /* GLOW */
-
 const glowGeometry = new THREE.SphereGeometry(0.63,64,64);
-
 const glowMaterial = new THREE.MeshBasicMaterial({
-  color:0xff66cc,
-  transparent:true,
-  opacity:0.08,
-  blending:THREE.AdditiveBlending
+  color:0xff66cc, transparent:true, opacity:0.08, blending:THREE.AdditiveBlending
 });
-
-const glow = new THREE.Mesh(glowGeometry,glowMaterial);
+const glow = new THREE.Mesh(glowGeometry, glowMaterial);
 portalGroup.add(glow);
 
 /* PLASMA */
-
 const plasmaCanvas = document.createElement("canvas");
 plasmaCanvas.width = 512;
 plasmaCanvas.height = 512;
-
 const pctx = plasmaCanvas.getContext("2d");
-
 const pgrad = pctx.createRadialGradient(256,256,30,256,256,256);
 pgrad.addColorStop(0,"rgba(255,90,220,0.75)");
 pgrad.addColorStop(0.25,"rgba(255,60,190,0.55)");
 pgrad.addColorStop(0.55,"rgba(220,40,210,0.38)");
 pgrad.addColorStop(0.8,"rgba(150,20,200,0.25)");
 pgrad.addColorStop(1,"rgba(255,90,220,0)");
-
 pctx.fillStyle = pgrad;
 pctx.fillRect(0,0,512,512);
 
 const plasmaTexture = new THREE.CanvasTexture(plasmaCanvas);
-
 const plasmaMaterial = new THREE.MeshBasicMaterial({
-  map:plasmaTexture,
-  transparent:true,
-  opacity:0.23,
-  blending:THREE.AdditiveBlending
+  map:plasmaTexture, transparent:true, opacity:0.23, blending:THREE.AdditiveBlending
 });
-
-const plasma = new THREE.Mesh(
-  new THREE.SphereGeometry(0.72,64,64),
-  plasmaMaterial
-);
-portalGroup.add(plasma);
-
+const plasma = new THREE.Mesh(new THREE.SphereGeometry(0.72,64,64), plasmaMaterial);
 const plasma2 = plasma.clone();
+portalGroup.add(plasma);
 portalGroup.add(plasma2);
 
 /* LIGHT */
-
 const light = new THREE.PointLight(0xffffff,1.8);
 light.position.set(2,3,4);
 scene.add(light);
 
 camera.position.z = 3;
 
-/* MOBILE POSITION FIX */
-
 function updatePortalAlignment(){
   portalGroup.position.y = (window.innerWidth < 768) ? -0.26 : 0;
 }
 updatePortalAlignment();
 
-/* =====
-   AUDIO
-   ===== */
+/* ========= AUDIO + START ========= */
 
 const tapOverlay = document.getElementById("tapOverlay");
+const startCatcher = document.getElementById("startCatcher");
+const startBtn = document.getElementById("startBtn");
 
 const music = document.getElementById("music");
 music.volume = 0.16;
@@ -336,13 +315,15 @@ let highLevel = 0;
 let started = false;
 let ignoreCanvasClicksUntil = 0;
 
-async function startExperience(e){
+async function startExperience(e, reason){
   if(started) return;
 
   if(e){
     e.preventDefault();
     e.stopPropagation();
   }
+
+  dbg(`debug: start fired via ${reason}\ncreating audio…`);
 
   try{
     if(!audioCtx){
@@ -363,7 +344,7 @@ async function startExperience(e){
 
     await music.play();
   }catch(err){
-    console.warn("Audio start failed:", err);
+    dbg(`debug: FAILED\n${String(err)}`);
     return;
   }
 
@@ -371,23 +352,32 @@ async function startExperience(e){
   ignoreCanvasClicksUntil = performance.now() + 900;
 
   tapOverlay.style.display = "none";
+  startCatcher.style.display = "none";
   renderer.domElement.style.pointerEvents = "auto";
+
+  dbg(`debug: PLAYING ✅\naudioCtx=${audioCtx.state} paused=${music.paused} t=${music.currentTime.toFixed(2)}`);
 }
 
-/* ✅ Catch the FIRST gesture anywhere (even if canvases/overlays intercept hit-testing)
-   capture:true makes it fire on the way down the event chain.
-   once:true ensures it only runs once. */
-document.addEventListener("touchstart", startExperience, { capture:true, passive:false, once:true });
-document.addEventListener("pointerdown", startExperience, { capture:true, passive:false, once:true });
-document.addEventListener("click", startExperience, { capture:true, passive:false, once:true });
+/* 3 ways to start:
+   - document capture (anywhere)
+   - full-screen catcher
+   - explicit START button */
+document.addEventListener("touchstart", (e)=>startExperience(e,"document touchstart"), {capture:true, passive:false});
+document.addEventListener("pointerdown", (e)=>startExperience(e,"document pointerdown"), {capture:true, passive:false});
+document.addEventListener("click", (e)=>startExperience(e,"document click"), {capture:true, passive:false});
+
+startCatcher.addEventListener("touchstart", (e)=>startExperience(e,"catcher touchstart"), {passive:false});
+startCatcher.addEventListener("pointerdown", (e)=>startExperience(e,"catcher pointerdown"), {passive:false});
+startCatcher.addEventListener("click", (e)=>startExperience(e,"catcher click"), {passive:false});
+
+startBtn.addEventListener("click", (e)=>startExperience(e,"START button"), {passive:false});
+startBtn.addEventListener("touchstart", (e)=>startExperience(e,"START button touch"), {passive:false});
 
 /* CLICK SPHERE */
-
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
 renderer.domElement.addEventListener("click",(event)=>{
-
   if(performance.now() < ignoreCanvasClicksUntil) return;
 
   mouse.x=(event.clientX/window.innerWidth)*2-1;
@@ -396,22 +386,13 @@ renderer.domElement.addEventListener("click",(event)=>{
   raycaster.setFromCamera(mouse,camera);
 
   const intersects = raycaster.intersectObject(sphere);
-
   if(intersects.length>0){
-
-    if(audioCtx && audioCtx.state==="suspended"){
-      audioCtx.resume();
-    }
-
-    if(music.paused){
-      music.play();
-    }else{
-      music.pause();
-    }
+    if(audioCtx && audioCtx.state==="suspended"){ audioCtx.resume(); }
+    if(music.paused){ music.play(); } else { music.pause(); }
   }
 });
 
-/* ANIMATION */
+/* ========= ANIMATION ========= */
 
 let rotationY = 0;
 let bassPulse = 0;
@@ -428,15 +409,8 @@ function animate(){
 
     for(let i=0;i<data.length;i++){
       const freq=i*(audioCtx.sampleRate/2)/data.length;
-
-      if(freq<=108){
-        bassSum+=data[i];
-        bassCount++;
-      }
-      if(freq>=900){
-        highSum+=data[i];
-        highCount++;
-      }
+      if(freq<=108){ bassSum+=data[i]; bassCount++; }
+      if(freq>=900){ highSum+=data[i]; highCount++; }
     }
 
     bassLevel=(bassSum/bassCount)/255;
@@ -447,7 +421,6 @@ function animate(){
   }
 
   starAngle += 0.0003;
-
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   const cx = canvas.width/2;
@@ -456,32 +429,19 @@ function animate(){
   const bubbleRadius = isPortraitMobile() ? 250 : 333;
 
   stars.forEach(s=>{
-
     s.y += s.speed*s.dir*(1+highLevel*2);
 
-    if(s.dir===1 && s.y>canvas.height){
-      s.y=0;
-      s.x=Math.random()*canvas.width;
-    }
-    if(s.dir===-1 && s.y<0){
-      s.y=canvas.height;
-      s.x=Math.random()*canvas.width;
-    }
+    if(s.dir===1 && s.y>canvas.height){ s.y=0; s.x=Math.random()*canvas.width; }
+    if(s.dir===-1 && s.y<0){ s.y=canvas.height; s.x=Math.random()*canvas.width; }
 
-    const dx=s.x-cx;
-    const dy=s.y-cy;
-
-    const cosA=Math.cos(starAngle);
-    const sinA=Math.sin(starAngle);
-
+    const dx=s.x-cx, dy=s.y-cy;
+    const cosA=Math.cos(starAngle), sinA=Math.sin(starAngle);
     const rotatedX=dx*cosA-dy*sinA;
     const rotatedY=dx*sinA+dy*cosA;
-
     s.x=cx+rotatedX;
     s.y=cy+rotatedY;
 
-    const dxp=s.x-pointerX;
-    const dyp=s.y-pointerY;
+    const dxp=s.x-pointerX, dyp=s.y-pointerY;
     const distp=Math.sqrt(dxp*dxp+dyp*dyp);
 
     if(distp<bubbleRadius && distp>0.001){
@@ -507,9 +467,7 @@ function animate(){
   clouds.rotation.y = -rotationY*0.6;
   clouds.rotation.x = Math.sin(rotationY*0.15)*0.1;
 
-  if(bassLevel>bassPulse){
-    bassPulse=bassLevel;
-  }
+  if(bassLevel>bassPulse){ bassPulse=bassLevel; }
   bassPulse *= 0.88;
 
   const scale = 1+bassPulse*0.35;
@@ -541,9 +499,7 @@ function animate(){
 animate();
 
 /* RESIZE */
-
 window.addEventListener("resize",()=>{
-
   canvas.width=window.innerWidth;
   canvas.height=window.innerHeight;
 
@@ -560,12 +516,8 @@ window.addEventListener("resize",()=>{
   updatePortalAlignment();
 });
 
-/* ORIENTATION */
-
 window.addEventListener("orientationchange",()=>{
-
   setTimeout(()=>{
-
     canvas.width=window.innerWidth;
     canvas.height=window.innerHeight;
 
@@ -580,9 +532,7 @@ window.addEventListener("orientationchange",()=>{
     pointerY=canvas.height/2;
 
     updatePortalAlignment();
-
   },200);
-
 });
 </script>
 
