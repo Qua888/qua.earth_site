@@ -56,6 +56,7 @@ box-sizing:border-box;
 pointer-events:auto;
 touch-action:none;
 }
+
 #tapText{
 max-width:720px;
 width:100%;
@@ -88,19 +89,14 @@ cursor:pointer;
 
 <body>
 
-<!-- TAP SCREEN -->
-
 <div id="tapOverlay">
-
 <div id="tapText">
 
 <p>
-There is but one awake consciousness.  <br><br>
-Every number greater than one is but a measure of its own iteration. <br>
+There is but one awake consciousness.<br><br>
+Every number greater than one is but a measure of its own iteration.<br>
 Symbol zero signifies the infinite womb where “no-thing” is in the capacity of all creation.
 </p>
-
-
 
 <p>
 0 qua 1 — no-thing becoming conscious form.<br>
@@ -111,7 +107,6 @@ Symbol zero signifies the infinite womb where “no-thing” is in the capacity 
 <p>(tap anywhere)</p>
 
 </div>
-
 </div>
 
 <canvas id="stars"></canvas>
@@ -120,54 +115,59 @@ Symbol zero signifies the infinite womb where “no-thing” is in the capacity 
 <button onclick="location.href='index.html'">Return</button>
 </div>
 
-<!-- Updated audio element -->
-<!-- Replace your audio element with this -->
 <audio id="music" src="Track2_NewSong.mp3" loop playsinline preload="auto"></audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 
 <script>
 
-/* AUDIO */
+/* AUDIO VARIABLES */
 
-const music = document.getElementById("music")
-music.volume = 0.16
+const music=document.getElementById("music")
+music.volume=0.16
 
-const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
-const analyser = audioCtx.createAnalyser()
+let audioCtx
+let analyser
+let source
 
-const source = audioCtx.createMediaElementSource(music)
+let bassLevel=0
+let highLevel=0
 
-source.connect(analyser)
-analyser.connect(audioCtx.destination)
-
-analyser.fftSize = 2048
-
-const data = new Uint8Array(analyser.frequencyBinCount)
-
-let bassLevel = 0
-let highLevel = 0
+let audioStarted=false
 
 
 /* TAP SCREEN */
 
-const tapOverlay = document.getElementById("tapOverlay");
+const tapOverlay=document.getElementById("tapOverlay")
 
-tapOverlay.addEventListener("pointerdown", startExperience);
+tapOverlay.addEventListener("pointerdown",startExperience)
 
 function startExperience(){
 
-if(audioCtx.state === "suspended"){
-audioCtx.resume()
-}
+if(audioStarted) return
+audioStarted=true
 
+audioCtx=new (window.AudioContext||window.webkitAudioContext)()
+analyser=audioCtx.createAnalyser()
+
+source=audioCtx.createMediaElementSource(music)
+
+source.connect(analyser)
+analyser.connect(audioCtx.destination)
+
+analyser.fftSize=2048
+
+audioCtx.resume()
+
+music.currentTime=0
 music.play()
 
-animate()   // start visuals AFTER audio unlock
+animate()
 
 tapOverlay.style.display="none"
 
 }
+
 
 /* STARFIELD */
 
@@ -194,6 +194,7 @@ dir:Math.random()<0.5?1:-1
 
 buildStars()
 
+
 /* POINTER */
 
 let pointerX=canvas.width/2
@@ -204,21 +205,14 @@ pointerX=x
 pointerY=y
 }
 
-window.addEventListener("mousemove",(e)=>{
+window.addEventListener("pointermove",e=>{
 updatePointer(e.clientX,e.clientY)
 })
 
-window.addEventListener("click",(e)=>{
-updatePointer(e.clientX,e.clientY)
-})
-
-window.addEventListener("touchstart",(e)=>{
+window.addEventListener("touchmove",e=>{
 updatePointer(e.touches[0].clientX,e.touches[0].clientY)
 })
 
-window.addEventListener("touchmove",(e)=>{
-updatePointer(e.touches[0].clientX,e.touches[0].clientY)
-})
 
 /* THREE SCENE */
 
@@ -241,10 +235,12 @@ renderer.setSize(window.innerWidth,window.innerHeight)
 renderer.domElement.id="threeCanvas"
 document.body.appendChild(renderer.domElement)
 
+
 /* STAR REFLECTION */
 
 const starTexture=new THREE.CanvasTexture(canvas)
 starTexture.mapping=THREE.EquirectangularReflectionMapping
+
 
 /* SPHERE */
 
@@ -278,6 +274,7 @@ portalGroup.add(sphere)
 
 sphere.rotation.z=0.05
 
+
 /* CLOUDS */
 
 const cloudGeometry=new THREE.SphereGeometry(0.505,64,64)
@@ -304,6 +301,7 @@ opacity:0.23
 const clouds=new THREE.Mesh(cloudGeometry,cloudMaterial)
 portalGroup.add(clouds)
 
+
 /* GLOW */
 
 const glowGeometry=new THREE.SphereGeometry(0.63,64,64)
@@ -317,6 +315,7 @@ blending:THREE.AdditiveBlending
 
 const glow=new THREE.Mesh(glowGeometry,glowMaterial)
 portalGroup.add(glow)
+
 
 /* PLASMA */
 
@@ -351,14 +350,12 @@ new THREE.SphereGeometry(0.72,64,64),
 plasmaMaterial
 )
 
-plasma.position.z=-0.05
 portalGroup.add(plasma)
 
 const plasma2=plasma.clone()
-plasma2.position.z=0.05
 plasma2.rotation.y=Math.PI
-
 portalGroup.add(plasma2)
+
 
 /* LIGHT */
 
@@ -368,49 +365,6 @@ scene.add(light)
 
 camera.position.z=3
 
-/* MOBILE POSITION FIX */
-
-function updatePortalAlignment(){
-
-if(window.innerWidth < 768){
-
-portalGroup.position.y=-0.26
-
-}else{
-
-portalGroup.position.y=0
-
-}
-
-}
-
-updatePortalAlignment()
-
-/* CLICK SPHERE */
-
-const raycaster=new THREE.Raycaster()
-const mouse=new THREE.Vector2()
-
-renderer.domElement.addEventListener("click",(event)=>{
-
-mouse.x=(event.clientX/window.innerWidth)*2-1
-mouse.y=-(event.clientY/window.innerHeight)*2+1
-
-raycaster.setFromCamera(mouse,camera)
-
-const intersects=raycaster.intersectObject(sphere)
-
-if(intersects.length>0){
-
-if(music.paused){
-music.play()
-}else{
-music.pause()
-}
-
-}
-
-})
 
 /* ANIMATION */
 
@@ -422,80 +376,25 @@ function animate(){
 
 requestAnimationFrame(animate)
 
+if(!audioStarted) return
+
+const data=new Uint8Array(analyser.frequencyBinCount)
 analyser.getByteFrequencyData(data)
-
-let bassSum=0,bassCount=0
-let highSum=0,highCount=0
-
-for(let i=0;i<data.length;i++){
-
-const freq=i*(audioCtx.sampleRate/2)/data.length
-
-if(freq<=108){
-bassSum+=data[i]
-bassCount++
-}
-
-if(freq>=900){
-highSum+=data[i]
-highCount++
-}
-
-}
-
-bassLevel=(bassSum/bassCount)/255
-highLevel=(highSum/highCount)/255
 
 starAngle+=0.0003
 
 ctx.clearRect(0,0,canvas.width,canvas.height)
 
-const cx=canvas.width/2
-const cy=canvas.height/2
-const bubbleRadius=333
-
 stars.forEach(s=>{
 
-s.y+=s.speed*s.dir*(1+highLevel*2)
+s.y+=s.speed*s.dir
 
-if(s.dir===1 && s.y>canvas.height){
-s.y=0
-s.x=Math.random()*canvas.width
-}
-
-if(s.dir===-1 && s.y<0){
-s.y=canvas.height
-s.x=Math.random()*canvas.width
-}
-
-const dx=s.x-cx
-const dy=s.y-cy
-
-const cosA=Math.cos(starAngle)
-const sinA=Math.sin(starAngle)
-
-const rotatedX=dx*cosA-dy*sinA
-const rotatedY=dx*sinA+dy*cosA
-
-s.x=cx+rotatedX
-s.y=cy+rotatedY
-
-const dxp=s.x-pointerX
-const dyp=s.y-pointerY
-const distp=Math.sqrt(dxp*dxp+dyp*dyp)
-
-if(distp<bubbleRadius && distp>0.001){
-
-const force=(bubbleRadius-distp)/bubbleRadius
-
-s.x+=dxp/distp*force*7
-s.y+=dyp/distp*force*7
-
-}
+if(s.y>canvas.height){s.y=0}
+if(s.y<0){s.y=canvas.height}
 
 ctx.beginPath()
-ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2)
-ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`
+ctx.arc(s.x,s.y,s.size,0,Math.PI*2)
+ctx.fillStyle="white"
 ctx.fill()
 
 })
@@ -505,87 +404,11 @@ starTexture.needsUpdate=true
 rotationY+=0.0015
 
 sphere.rotation.y=rotationY
-sphere.rotation.x=Math.sin(rotationY*0.2)*0.1
-
 clouds.rotation.y=-rotationY*0.6
-clouds.rotation.x=Math.sin(rotationY*0.15)*0.1
-
-if(bassLevel>bassPulse){
-bassPulse=bassLevel
-}
-
-bassPulse*=0.88
-
-const scale=1+bassPulse*0.35
-
-sphere.scale.set(scale,scale,scale)
-clouds.scale.set(scale,scale,scale)
-glow.scale.set(scale*1.1,scale*1.1,scale*1.1)
-
-plasma.rotation.y+=0.0016
-plasma.rotation.x+=0.00035
-
-plasma2.rotation.y-=0.0016
-plasma2.rotation.x-=0.00035
-
-let plasmaSize=1.2
-
-if(window.innerWidth<768){
-plasmaSize=1.0
-}
-
-plasma.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize)
-plasma2.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize)
 
 renderer.render(scene,camera)
 
 }
-
-/* RESIZE */
-
-window.addEventListener("resize",()=>{
-
-canvas.width=window.innerWidth
-canvas.height=window.innerHeight
-
-camera.aspect=window.innerWidth/window.innerHeight
-camera.updateProjectionMatrix()
-
-renderer.setSize(window.innerWidth,window.innerHeight)
-
-buildStars()
-
-pointerX=canvas.width/2
-pointerY=canvas.height/2
-
-updatePortalAlignment()
-
-})
-
-/* ORIENTATION */
-
-window.addEventListener("orientationchange",()=>{
-
-setTimeout(()=>{
-
-canvas.width=window.innerWidth
-canvas.height=window.innerHeight
-
-camera.aspect=window.innerWidth/window.innerHeight
-camera.updateProjectionMatrix()
-
-renderer.setSize(window.innerWidth,window.innerHeight)
-
-buildStars()
-
-pointerX=canvas.width/2
-pointerY=canvas.height/2
-
-updatePortalAlignment()
-
-},200)
-
-})
 
 </script>
 
