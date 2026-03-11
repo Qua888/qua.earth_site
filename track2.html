@@ -62,8 +62,8 @@ cursor:pointer;
 </div>
 
 <audio id="music" loop autoplay muted playsinline>
-    <source src="Track2_NewSong.mp3" type="audio/mpeg">
-    </audio>
+<source src="Track2_NewSong.mp3" type="audio/mpeg">
+</audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 
@@ -90,13 +90,14 @@ function connectAudio(){
 if(!source){
 
 source=audioCtx.createMediaElementSource(music)
-
 source.connect(analyser)
 analyser.connect(audioCtx.destination)
 
 }
 
 }
+
+/* AUTOPLAY ON PAGE ARRIVAL */
 
 window.addEventListener("load",async ()=>{
 
@@ -108,37 +109,15 @@ await audioCtx.resume()
 
 await music.play()
 
-/* unmute immediately after autoplay */
 music.muted=false
 
 }catch(e){
-console.log("autoplay blocked")
+
+console.log("autoplay prevented")
+
 }
 
 })
-
-function unlockAudio(){
-
-if(audioCtx.state==="suspended"){
-audioCtx.resume()
-}
-
-if(!source){
-source=audioCtx.createMediaElementSource(music)
-source.connect(analyser)
-analyser.connect(audioCtx.destination)
-}
-
-/* start music on first tap for iOS */
-music.play().catch(()=>{})
-
-window.removeEventListener("touchstart",unlockAudio)
-window.removeEventListener("click",unlockAudio)
-
-}
-
-window.addEventListener("touchstart",unlockAudio,{once:true})
-window.addEventListener("click",unlockAudio,{once:true})
 
 /* STARFIELD */
 
@@ -162,6 +141,7 @@ dir:Math.random()<0.5?1:-1
 })
 }
 }
+
 buildStars()
 
 /* POINTER */
@@ -251,9 +231,11 @@ sphere.rotation.z=0.05
 /* CLOUDS */
 
 const cloudGeometry=new THREE.SphereGeometry(0.505,64,64)
+
 const cloudCanvas=document.createElement("canvas")
 cloudCanvas.width=512
 cloudCanvas.height=512
+
 const cloudCtx=cloudCanvas.getContext("2d")
 
 for(let i=0;i<20000;i++){
@@ -291,6 +273,7 @@ portalGroup.add(glow)
 const plasmaCanvas=document.createElement("canvas")
 plasmaCanvas.width=512
 plasmaCanvas.height=512
+
 const pctx=plasmaCanvas.getContext("2d")
 
 const pgrad=pctx.createRadialGradient(256,256,30,256,256,256)
@@ -322,7 +305,6 @@ plasma.position.z=-0.05
 portalGroup.add(plasma)
 
 const plasma2=plasma.clone()
-
 plasma2.position.z=0.05
 plasma2.rotation.y=Math.PI
 
@@ -336,14 +318,18 @@ scene.add(light)
 
 camera.position.z=3
 
-/* MOBILE PORTAL ALIGNMENT */
+/* MOBILE POSITION FIX */
 
 function updatePortalAlignment(){
 
 if(window.innerWidth < 768){
-portalGroup.position.y = -0.18
+
+portalGroup.position.y=-0.26
+
 }else{
-portalGroup.position.y = 0
+
+portalGroup.position.y=0
+
 }
 
 }
@@ -492,8 +478,14 @@ plasma.rotation.x+=0.00035
 plasma2.rotation.y-=0.0016
 plasma2.rotation.x-=0.00035
 
-plasma.scale.set(scale*1.2,scale*1.2,scale*1.2)
-plasma2.scale.set(scale*1.2,scale*1.2,scale*1.2)
+let plasmaSize=1.2
+
+if(window.innerWidth<768){
+plasmaSize=1.0
+}
+
+plasma.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize)
+plasma2.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize)
 
 renderer.render(scene,camera)
 
