@@ -160,17 +160,17 @@ function startExperience(){
 
 audioCtx.resume()
 
-connectAudio()
-
 music.currentTime = 0
 
 music.play().then(()=>{
-console.log("music started")
+
+connectAudio()
+
 }).catch(err=>{
 console.log("play blocked:", err)
 })
 
-tapOverlay.style.display = "none"
+tapOverlay.style.display="none"
 
 }
 
