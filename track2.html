@@ -41,20 +41,30 @@ left:0;
 width:100%;
 height:100%;
 background:black;
+
 display:flex;
 justify-content:center;
 align-items:center;
-text-align:center;
+
 color:white;
 z-index:20;
 font-family:Georgia,serif;
+
 padding:40px;
+box-sizing:border-box;
 }
 
 #tapText{
 max-width:720px;
+width:100%;
+text-align:center;
 line-height:1.6;
 font-size:18px;
+margin:auto;
+}
+
+#tapText p{
+margin:0 0 20px 0;
 }
 
 #return{
@@ -150,29 +160,22 @@ analyser.connect(audioCtx.destination)
 
 /* TAP SCREEN AUDIO UNLOCK */
 
-const tapOverlay = document.getElementById("tapOverlay")
-let experienceStarted = false
+const tapOverlay=document.getElementById("tapOverlay")
 
 function startExperience(){
 
-if(experienceStarted) return
-experienceStarted = true
-
 connectAudio()
 
-audioCtx.resume().then(()=>{
+audioCtx.resume()
 
-music.currentTime = 0
 music.play().catch(()=>{})
 
-})
-
-tapOverlay.style.display = "none"
+tapOverlay.style.display="none"
 
 }
 
-tapOverlay.addEventListener("click", startExperience)
-tapOverlay.addEventListener("touchstart", startExperience)
+tapOverlay.addEventListener("click",startExperience)
+tapOverlay.addEventListener("touchstart",startExperience)
 
 /* STARFIELD */
 
@@ -347,7 +350,7 @@ const plasmaTexture=new THREE.CanvasTexture(plasmaCanvas)
 const plasmaMaterial=new THREE.MeshBasicMaterial({
 map:plasmaTexture,
 transparent:true,
-opacity:0.34,
+opacity:0.23,
 blending:THREE.AdditiveBlending
 })
 
