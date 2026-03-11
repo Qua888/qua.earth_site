@@ -149,9 +149,12 @@ let bassLevel = 0
 let highLevel = 0
 
 
-/* TAP SCREEN AUDIO UNLOCK */
+/* TAP SCREEN */
 
 const tapOverlay = document.getElementById("tapOverlay")
+
+tapOverlay.addEventListener("click", startExperience)
+tapOverlay.addEventListener("touchstart", startExperience)
 
 function startExperience(){
 
