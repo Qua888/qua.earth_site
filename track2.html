@@ -297,7 +297,7 @@ function updatePortalAlignment(){
 }
 updatePortalAlignment();
 
-/* ========= AUDIO + START (iOS SAFE: NO await before play) ========= */
+/* ========= AUDIO + START (iOS SAFE: resume()->play chain, no await) ========= */
 
 const tapOverlay = document.getElementById("tapOverlay");
 const startCatcher = document.getElementById("startCatcher");
@@ -315,28 +315,51 @@ let bassLevel = 0;
 let highLevel = 0;
 
 let started = false;
+let starting = false;
 let ignoreCanvasClicksUntil = 0;
+
+function cleanupStartListeners(){
+  startCatcher.removeEventListener("touchstart", onStartTouch, { passive:false });
+  startCatcher.removeEventListener("pointerdown", onStartPointer, { passive:false });
+  startCatcher.removeEventListener("click", onStartClick, { passive:false });
+
+  startBtn.removeEventListener("touchstart", onBtnTouch, { passive:false });
+  startBtn.removeEventListener("click", onBtnClick, { passive:false });
+}
 
 function finishStartUI(){
   started = true;
+  starting = false;
+
   ignoreCanvasClicksUntil = performance.now() + 900;
 
   tapOverlay.style.display = "none";
   startCatcher.style.display = "none";
   renderer.domElement.style.pointerEvents = "auto";
 
-  dbg(`debug: PLAYING ✅\naudioCtx=${audioCtx ? audioCtx.state : "n/a"} paused=${music.paused} t=${music.currentTime.toFixed(2)}`);
+  dbg(`debug: PLAYING ✅
+audioCtx=${audioCtx ? audioCtx.state : "n/a"} paused=${music.paused} t=${music.currentTime.toFixed(2)}`);
+}
+
+function failStart(err){
+  starting = false;
+  dbg(`debug: FAILED
+${String(err)}`);
 }
 
 function startExperience(e, reason){
-  if(started) return;
+  if (started || starting) return;
+  starting = true;
 
-  if(e){
+  if (e){
     e.preventDefault();
     e.stopPropagation();
   }
 
-  dbg(`debug: start fired via ${reason}\n(resume + play sync)`);
+  cleanupStartListeners();
+
+  dbg(`debug: start fired via ${reason}
+resume()->play chain`);
 
   try{
     if(!audioCtx){
@@ -351,31 +374,34 @@ function startExperience(e, reason){
       data = new Uint8Array(analyser.frequencyBinCount);
     }
 
-    // IMPORTANT: do NOT await before play on iOS.
-    audioCtx.resume();
+    audioCtx.resume().then(() => {
+      dbg(`debug: resumed
+audioCtx=${audioCtx.state}
+calling play()...`);
+      return music.play();
+    }).then(() => {
+      setTimeout(() => finishStartUI(), 50);
+    }).catch((err) => {
+      failStart(err);
+    });
 
-    const p = music.play();
-    if(p && typeof p.then === "function"){
-      p.then(() => {
-        finishStartUI();
-      }).catch((err) => {
-        dbg(`debug: FAILED\n${String(err)}`);
-      });
-    }else{
-      finishStartUI();
-    }
-  }catch(err){
-    dbg(`debug: FAILED\n${String(err)}`);
+  } catch (err) {
+    failStart(err);
   }
 }
 
-/* Start listeners (no document capture; keep it a direct gesture target) */
-startCatcher.addEventListener("touchstart", (e)=>startExperience(e,"catcher touchstart"), {passive:false});
-startCatcher.addEventListener("pointerdown", (e)=>startExperience(e,"catcher pointerdown"), {passive:false});
-startCatcher.addEventListener("click", (e)=>startExperience(e,"catcher click"), {passive:false});
+function onStartTouch(e){ startExperience(e, "catcher touchstart"); }
+function onStartPointer(e){ startExperience(e, "catcher pointerdown"); }
+function onStartClick(e){ startExperience(e, "catcher click"); }
+function onBtnTouch(e){ startExperience(e, "START button touch"); }
+function onBtnClick(e){ startExperience(e, "START button click"); }
 
-startBtn.addEventListener("touchstart", (e)=>startExperience(e,"START button touch"), {passive:false});
-startBtn.addEventListener("click", (e)=>startExperience(e,"START button click"), {passive:false});
+startCatcher.addEventListener("touchstart", onStartTouch, {passive:false});
+startCatcher.addEventListener("pointerdown", onStartPointer, {passive:false});
+startCatcher.addEventListener("click", onStartClick, {passive:false});
+
+startBtn.addEventListener("touchstart", onBtnTouch, {passive:false});
+startBtn.addEventListener("click", onBtnClick, {passive:false});
 
 /* CLICK SPHERE */
 const raycaster = new THREE.Raycaster();
