@@ -47,13 +47,61 @@ body{
   align-items:center;
 
   color:white;
+  z-index:20;<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Qua — Sphere Chamber</title>
+
+<style>
+body{
+  margin:0;
+  overflow:hidden;
+  background:black;
+  height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  touch-action:manipulation;
+}
+
+#stars{
+  position:absolute;
+  z-index:1;
+}
+
+#threeCanvas{
+  position:absolute;
+  top:0;
+  left:0;
+  z-index:3;
+  cursor:pointer;
+}
+
+/* TAP ACTIVATION SCREEN */
+
+#tapOverlay{
+  position:fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background:black;
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+
+  color:white;
   z-index:20;
   font-family:Georgia,serif;
 
   padding:40px;
   box-sizing:border-box;
 
-  /* important for iOS gesture handling */
   touch-action:manipulation;
   -webkit-user-select:none;
   user-select:none;
@@ -66,6 +114,10 @@ body{
   line-height:1.6;
   font-size:18px;
   margin:auto;
+}
+
+#tapHint{
+  opacity:0.9;
 }
 
 #return{
@@ -117,8 +169,7 @@ button{
   <button onclick="location.href='index.html'">Return</button>
 </div>
 
-<!-- AUDIO -->
-<audio id="music" loop playsinline preload="auto" crossorigin="anonymous">
+<audio id="music" loop playsinline preload="auto">
   <source src="Track2_NewSong.mp3" type="audio/mpeg">
 </audio>
 
@@ -126,14 +177,17 @@ button{
 
 <script>
 /* =========================
-   AUDIO (iOS-FIRST APPROACH)
-   - iOS Safari is picky.
-   - Start with direct music.play() INSIDE gesture.
-   - Then wire WebAudio analyser after.
+   AUDIO (iOS Chrome / Safari safe)
+   Key change:
+   - Call music.play() synchronously inside touchstart/pointerdown
+   - Only after play succeeds, hide overlay + wire analyser
    ========================= */
 
 const music = document.getElementById("music");
 music.volume = 0.16;
+
+const tapOverlay = document.getElementById("tapOverlay");
+const tapHint = document.getElementById("tapHint");
 
 let audioCtx = null;
 let analyser = null;
@@ -143,14 +197,17 @@ let data = null;
 let bassLevel = 0;
 let highLevel = 0;
 
+let started = false;
+let ignoreCanvasClicksUntil = 0;
+
 function ensureAudioGraph(){
-  if(audioCtx) return;
+  if (audioCtx) return;
 
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   analyser = audioCtx.createAnalyser();
   analyser.fftSize = 2048;
 
-  // createMediaElementSource MUST be created once
+  // If this fails due to CORS or platform quirks, visuals still run (just no analyser)
   source = audioCtx.createMediaElementSource(music);
   source.connect(analyser);
   analyser.connect(audioCtx.destination);
@@ -158,15 +215,7 @@ function ensureAudioGraph(){
   data = new Uint8Array(analyser.frequencyBinCount);
 }
 
-/* TAP SCREEN AUDIO UNLOCK */
-
-const tapOverlay = document.getElementById("tapOverlay");
-const tapHint = document.getElementById("tapHint");
-
-let started = false;
-let ignoreCanvasClicksUntil = 0;
-
-async function startExperience(e){
+function tryStart(e){
   if (started) return;
 
   if (e){
@@ -174,43 +223,48 @@ async function startExperience(e){
     e.stopPropagation();
   }
 
-  // make sure the element is ready to load on iOS
-  try { music.load(); } catch (_) {}
+  tapHint.textContent = "(starting audio...)";
 
-  // IMPORTANT: call play() FIRST inside the gesture
-  try{
-    await music.play();
-  }catch(err){
-    // Keep overlay up and show a helpful hint
-    tapHint.textContent = "(tap again — audio blocked)";
-    console.warn("music.play() blocked:", err);
-    return;
+  // IMPORTANT: do not await here; keep it synchronous inside the gesture.
+  const p = music.play();
+
+  if (p && typeof p.then === "function"){
+    p.then(() => {
+      started = true;
+      tapOverlay.style.display = "none";
+      ignoreCanvasClicksUntil = performance.now() + 800;
+
+      // Wire analyser AFTER playback begins (more reliable on iOS Chrome)
+      setTimeout(() => {
+        try{
+          ensureAudioGraph();
+          if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+        }catch(err){
+          console.warn("WebAudio analyser setup failed:", err);
+        }
+      }, 0);
+
+      tapOverlay.removeEventListener("touchstart", tryStart);
+      tapOverlay.removeEventListener("pointerdown", tryStart);
+      tapOverlay.removeEventListener("click", tryStart);
+    }).catch((err) => {
+      console.warn("music.play() blocked:", err);
+      tapHint.textContent = "(audio blocked — tap again)";
+      started = false;
+    });
+  } else {
+    // Older behavior (unlikely)
+    started = true;
+    tapOverlay.style.display = "none";
   }
-
-  // Now wire analyser + resume context
-  try{
-    ensureAudioGraph();
-    if (audioCtx.state === "suspended"){
-      await audioCtx.resume();
-    }
-  }catch(err){
-    console.warn("AudioContext init/resume failed:", err);
-    // audio can still play even if analyser fails, so continue
-  }
-
-  started = true;
-
-  tapOverlay.style.display = "none";
-  ignoreCanvasClicksUntil = performance.now() + 700;
-
-  tapOverlay.removeEventListener("touchend", startExperience);
-  tapOverlay.removeEventListener("click", startExperience);
 }
 
-// iOS: touchend is often more reliable than touchstart for media unlock.
-// click is a fallback.
-tapOverlay.addEventListener("touchend", startExperience, { passive:false });
-tapOverlay.addEventListener("click", startExperience, { passive:false });
+// iOS Chrome: touchstart is often the most reliable for audio unlock
+tapOverlay.addEventListener("touchstart", tryStart, { passive:false });
+// Modern browsers
+tapOverlay.addEventListener("pointerdown", tryStart, { passive:false });
+// Fallback
+tapOverlay.addEventListener("click", tryStart, { passive:false });
 
 /* STARFIELD */
 
@@ -234,7 +288,6 @@ function buildStars(){
     });
   }
 }
-
 buildStars();
 
 /* POINTER */
@@ -429,7 +482,6 @@ const mouse=new THREE.Vector2();
 
 renderer.domElement.addEventListener("click",(event)=>{
 
-  // prevent the delayed click from the overlay tap from instantly pausing
   if(performance.now() < ignoreCanvasClicksUntil) return;
 
   mouse.x=(event.clientX/window.innerWidth)*2-1;
@@ -470,6 +522,7 @@ function animate(){
         bassSum+=data[i];
         bassCount++;
       }
+
       if(freq>=900){
         highSum+=data[i];
         highCount++;
@@ -523,6 +576,7 @@ function animate(){
 
     if(distp<bubbleRadius && distp>0.001){
       const force=(bubbleRadius-distp)/bubbleRadius;
+
       s.x+=dxp/distp*force*7;
       s.y+=dyp/distp*force*7;
     }
@@ -531,6 +585,7 @@ function animate(){
     ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2);
     ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`;
     ctx.fill();
+
   });
 
   starTexture.needsUpdate=true;
@@ -562,6 +617,7 @@ function animate(){
   plasma2.rotation.x-=0.00035;
 
   let plasmaSize=1.2;
+
   if(window.innerWidth<768){
     plasmaSize=1.0;
   }
@@ -571,7 +627,6 @@ function animate(){
 
   renderer.render(scene,camera);
 }
-
 animate();
 
 /* RESIZE */
