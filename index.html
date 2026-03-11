@@ -29,7 +29,7 @@ touch-action:manipulation;
 }
 
 /* keep portal layers non-clickable except what we explicitly allow */
-body *:not(.triangle):not(#tapScreen):not(#navBar):not(#navBar *):not(#gameOverlay):not(#gameOverlay *){
+body *:not(.triangle):not(#tapScreen):not(#navBar):not(#navBar *):not(#gameOverlay):not(#gameOverlay *):not(#nextTrack):not(#nextTrack *){
 pointer-events:none;
 }
 
@@ -511,6 +511,38 @@ display:block;
 }
 }
 
+/* NEXT TRACK BUTTON */
+
+#nextTrack{
+position:fixed;
+bottom:28px;
+left:50%;
+transform:translateX(-50%);
+z-index:10;
+}
+
+#nextTrackBtn{
+appearance:none;
+-webkit-appearance:none;
+
+border:1px solid rgba(0,0,0,0.3);
+background:black;
+color:white;
+
+font-family:Georgia,serif;
+letter-spacing:2px;
+font-size:12px;
+
+padding:10px 16px;
+cursor:pointer;
+
+transition:transform .25s ease, opacity .25s ease;
+}
+
+#nextTrackBtn:hover{
+transform:scale(1.05);
+}
+
 </style>
 </head>
 
@@ -538,9 +570,9 @@ Qua<br>
 Peace & Elegant Vitality
 </div>
 
-<div id="comingSoon">
-More to come very soon...
-</div>
+<div id="nextTrack">
+    <button id="nextTrackBtn">Next Track</button>
+    </div>
 
 <canvas id="stars"></canvas>
 
@@ -627,6 +659,12 @@ alert("YouTube section coming soon")
 
 btnNFTs.addEventListener("click",()=>{
 alert("Music NFTs section coming soon")
+})
+
+const nextTrackBtn=document.getElementById("nextTrackBtn")
+
+nextTrackBtn.addEventListener("click",()=>{
+window.location.href="track2.html"
 })
 
 /* POINTER (mouse + touch) */
