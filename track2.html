@@ -157,26 +157,16 @@ tapOverlay.addEventListener("pointerdown", startExperience);
 
 function startExperience(){
 
-  // iOS / mobile unlock for HTMLMediaElement
-  music.muted = true;
+if(audioCtx.state === "suspended"){
+audioCtx.resume()
+}
 
-  const p = music.play();
-  if (p !== undefined) {
-    p.then(() => {
-      music.pause();
-      music.currentTime = 0;
-      music.muted = false;
+music.play()
 
-      // resume WebAudio and start real playback
-      if (audioCtx.state === "suspended") {
-        audioCtx.resume();
-      }
-      music.play();
+animate()   // start visuals AFTER audio unlock
 
-    }).catch(()=>{});
-  }
+tapOverlay.style.display="none"
 
-  tapOverlay.style.display = "none";
 }
 
 /* STARFIELD */
@@ -550,8 +540,6 @@ plasma2.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize)
 renderer.render(scene,camera)
 
 }
-
-animate()
 
 /* RESIZE */
 
