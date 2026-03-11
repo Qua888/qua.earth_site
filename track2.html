@@ -150,22 +150,23 @@ analyser.connect(audioCtx.destination)
 
 /* TAP SCREEN AUDIO UNLOCK */
 
-const tapOverlay=document.getElementById("tapOverlay")
-
 function startExperience(){
+
+if(audioCtx.state === "suspended"){
+audioCtx.resume()
+}
 
 connectAudio()
 
-audioCtx.resume()
+music.currentTime = 0
 
 music.play().catch(()=>{})
 
-tapOverlay.style.display="none"
+tapOverlay.style.display = "none"
 
 }
 
-tapOverlay.addEventListener("click",startExperience)
-tapOverlay.addEventListener("touchstart",startExperience)
+tapOverlay.addEventListener("pointerdown", startExperience)
 
 /* STARFIELD */
 
