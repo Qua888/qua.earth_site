@@ -52,8 +52,10 @@ font-family:Georgia,serif;
 
 padding:40px;
 box-sizing:border-box;
-}
 
+pointer-events:auto;
+touch-action:none;
+}
 #tapText{
 max-width:720px;
 width:100%;
@@ -153,8 +155,7 @@ let highLevel = 0
 
 const tapOverlay = document.getElementById("tapOverlay")
 
-tapOverlay.addEventListener("click", startExperience)
-tapOverlay.addEventListener("touchstart", startExperience)
+tapOverlay.addEventListener("pointerdown", startExperience)
 
 function startExperience(){
 
