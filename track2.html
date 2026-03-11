@@ -77,6 +77,8 @@ body{
   background:transparent;
   pointer-events:auto;
   touch-action:manipulation;
+  -webkit-user-select:none;
+  user-select:none;
 }
 
 #return{
@@ -295,7 +297,7 @@ function updatePortalAlignment(){
 }
 updatePortalAlignment();
 
-/* ========= AUDIO + START ========= */
+/* ========= AUDIO + START (iOS SAFE: NO await before play) ========= */
 
 const tapOverlay = document.getElementById("tapOverlay");
 const startCatcher = document.getElementById("startCatcher");
@@ -315,7 +317,18 @@ let highLevel = 0;
 let started = false;
 let ignoreCanvasClicksUntil = 0;
 
-async function startExperience(e, reason){
+function finishStartUI(){
+  started = true;
+  ignoreCanvasClicksUntil = performance.now() + 900;
+
+  tapOverlay.style.display = "none";
+  startCatcher.style.display = "none";
+  renderer.domElement.style.pointerEvents = "auto";
+
+  dbg(`debug: PLAYING ✅\naudioCtx=${audioCtx ? audioCtx.state : "n/a"} paused=${music.paused} t=${music.currentTime.toFixed(2)}`);
+}
+
+function startExperience(e, reason){
   if(started) return;
 
   if(e){
@@ -323,7 +336,7 @@ async function startExperience(e, reason){
     e.stopPropagation();
   }
 
-  dbg(`debug: start fired via ${reason}\ncreating audio…`);
+  dbg(`debug: start fired via ${reason}\n(resume + play sync)`);
 
   try{
     if(!audioCtx){
@@ -338,40 +351,31 @@ async function startExperience(e, reason){
       data = new Uint8Array(analyser.frequencyBinCount);
     }
 
-    if(audioCtx.state === "suspended"){
-      await audioCtx.resume();
-    }
+    // IMPORTANT: do NOT await before play on iOS.
+    audioCtx.resume();
 
-    await music.play();
+    const p = music.play();
+    if(p && typeof p.then === "function"){
+      p.then(() => {
+        finishStartUI();
+      }).catch((err) => {
+        dbg(`debug: FAILED\n${String(err)}`);
+      });
+    }else{
+      finishStartUI();
+    }
   }catch(err){
     dbg(`debug: FAILED\n${String(err)}`);
-    return;
   }
-
-  started = true;
-  ignoreCanvasClicksUntil = performance.now() + 900;
-
-  tapOverlay.style.display = "none";
-  startCatcher.style.display = "none";
-  renderer.domElement.style.pointerEvents = "auto";
-
-  dbg(`debug: PLAYING ✅\naudioCtx=${audioCtx.state} paused=${music.paused} t=${music.currentTime.toFixed(2)}`);
 }
 
-/* 3 ways to start:
-   - document capture (anywhere)
-   - full-screen catcher
-   - explicit START button */
-document.addEventListener("touchstart", (e)=>startExperience(e,"document touchstart"), {capture:true, passive:false});
-document.addEventListener("pointerdown", (e)=>startExperience(e,"document pointerdown"), {capture:true, passive:false});
-document.addEventListener("click", (e)=>startExperience(e,"document click"), {capture:true, passive:false});
-
+/* Start listeners (no document capture; keep it a direct gesture target) */
 startCatcher.addEventListener("touchstart", (e)=>startExperience(e,"catcher touchstart"), {passive:false});
 startCatcher.addEventListener("pointerdown", (e)=>startExperience(e,"catcher pointerdown"), {passive:false});
 startCatcher.addEventListener("click", (e)=>startExperience(e,"catcher click"), {passive:false});
 
-startBtn.addEventListener("click", (e)=>startExperience(e,"START button"), {passive:false});
 startBtn.addEventListener("touchstart", (e)=>startExperience(e,"START button touch"), {passive:false});
+startBtn.addEventListener("click", (e)=>startExperience(e,"START button click"), {passive:false});
 
 /* CLICK SPHERE */
 const raycaster = new THREE.Raycaster();
