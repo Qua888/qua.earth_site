@@ -32,6 +32,31 @@ z-index:3;
 cursor:pointer;
 }
 
+/* TAP ACTIVATION SCREEN */
+
+#tapOverlay{
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:black;
+display:flex;
+justify-content:center;
+align-items:center;
+text-align:center;
+color:white;
+z-index:20;
+font-family:Georgia,serif;
+padding:40px;
+}
+
+#tapText{
+max-width:720px;
+line-height:1.6;
+font-size:18px;
+}
+
 #return{
 position:fixed;
 bottom:28px;
@@ -55,13 +80,39 @@ cursor:pointer;
 
 <body>
 
+<!-- TAP SCREEN -->
+
+<div id="tapOverlay">
+
+<div id="tapText">
+
+<p>
+There is but one awake consciousness.  <br><br>
+Every number greater than one is but a measure of its own iteration. <br>
+Symbol zero signifies the infinite womb where “no-thing” is in the capacity of all creation.
+</p>
+
+
+
+<p>
+0 qua 1 — no-thing becoming conscious form.<br>
+1 qua 0 — consciousness as infinity.
+</p>
+
+<br>
+<p>(tap anywhere)</p>
+
+</div>
+
+</div>
+
 <canvas id="stars"></canvas>
 
 <div id="return">
 <button onclick="location.href='index.html'">Return</button>
 </div>
 
-<audio id="music" loop autoplay muted playsinline>
+<audio id="music" loop playsinline>
 <source src="Track2_NewSong.mp3" type="audio/mpeg">
 </audio>
 
@@ -97,27 +148,24 @@ analyser.connect(audioCtx.destination)
 
 }
 
-/* AUTOPLAY ON PAGE ARRIVAL */
+/* TAP SCREEN AUDIO UNLOCK */
 
-window.addEventListener("load",async ()=>{
+const tapOverlay=document.getElementById("tapOverlay")
 
-try{
+function startExperience(){
 
 connectAudio()
 
-await audioCtx.resume()
+audioCtx.resume()
 
-await music.play()
+music.play().catch(()=>{})
 
-music.muted=false
-
-}catch(e){
-
-console.log("autoplay prevented")
+tapOverlay.style.display="none"
 
 }
 
-})
+tapOverlay.addEventListener("click",startExperience)
+tapOverlay.addEventListener("touchstart",startExperience)
 
 /* STARFIELD */
 
@@ -248,7 +296,7 @@ const cloudTexture=new THREE.CanvasTexture(cloudCanvas)
 const cloudMaterial=new THREE.MeshBasicMaterial({
 map:cloudTexture,
 transparent:true,
-opacity:0.23
+opacity:0.34
 })
 
 const clouds=new THREE.Mesh(cloudGeometry,cloudMaterial)
