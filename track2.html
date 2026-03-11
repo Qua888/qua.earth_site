@@ -118,7 +118,6 @@ button{
 
 <body>
 
-<!-- catches taps ANYWHERE -->
 <div id="startCatcher"></div>
 
 <div id="tapOverlay">
@@ -159,9 +158,7 @@ function isPortraitMobile(){
 }
 
 const debugEl = document.getElementById("debug");
-function dbg(msg){
-  debugEl.textContent = msg;
-}
+function dbg(msg){ debugEl.textContent = msg; }
 
 /* ========= STARFIELD ========= */
 
@@ -297,7 +294,7 @@ function updatePortalAlignment(){
 }
 updatePortalAlignment();
 
-/* ========= AUDIO + START (iOS SAFE: resume()->play chain, no await) ========= */
+/* ========= AUDIO + START (retryable; remove listeners only on success) ========= */
 
 const tapOverlay = document.getElementById("tapOverlay");
 const startCatcher = document.getElementById("startCatcher");
@@ -318,15 +315,6 @@ let started = false;
 let starting = false;
 let ignoreCanvasClicksUntil = 0;
 
-function cleanupStartListeners(){
-  startCatcher.removeEventListener("touchstart", onStartTouch, { passive:false });
-  startCatcher.removeEventListener("pointerdown", onStartPointer, { passive:false });
-  startCatcher.removeEventListener("click", onStartClick, { passive:false });
-
-  startBtn.removeEventListener("touchstart", onBtnTouch, { passive:false });
-  startBtn.removeEventListener("click", onBtnClick, { passive:false });
-}
-
 function finishStartUI(){
   started = true;
   starting = false;
@@ -337,13 +325,20 @@ function finishStartUI(){
   startCatcher.style.display = "none";
   renderer.domElement.style.pointerEvents = "auto";
 
+  // remove start listeners ONLY now (success)
+  startCatcher.removeEventListener("touchstart", onStartTouch, {passive:false});
+  startCatcher.removeEventListener("pointerdown", onStartPointer, {passive:false});
+  startCatcher.removeEventListener("click", onStartClick, {passive:false});
+  startBtn.removeEventListener("touchstart", onBtnTouch, {passive:false});
+  startBtn.removeEventListener("click", onBtnClick, {passive:false});
+
   dbg(`debug: PLAYING ✅
 audioCtx=${audioCtx ? audioCtx.state : "n/a"} paused=${music.paused} t=${music.currentTime.toFixed(2)}`);
 }
 
 function failStart(err){
-  starting = false;
-  dbg(`debug: FAILED
+  starting = false; // allow retry tap
+  dbg(`debug: FAILED (tap again)
 ${String(err)}`);
 }
 
@@ -355,8 +350,6 @@ function startExperience(e, reason){
     e.preventDefault();
     e.stopPropagation();
   }
-
-  cleanupStartListeners();
 
   dbg(`debug: start fired via ${reason}
 resume()->play chain`);
@@ -374,16 +367,11 @@ resume()->play chain`);
       data = new Uint8Array(analyser.frequencyBinCount);
     }
 
-    audioCtx.resume().then(() => {
-      dbg(`debug: resumed
-audioCtx=${audioCtx.state}
-calling play()...`);
-      return music.play();
-    }).then(() => {
-      setTimeout(() => finishStartUI(), 50);
-    }).catch((err) => {
-      failStart(err);
-    });
+    // Keep the chain; iOS tends to accept this on the gesture event.
+    audioCtx.resume()
+      .then(() => music.play())
+      .then(() => setTimeout(finishStartUI, 50))
+      .catch(failStart);
 
   } catch (err) {
     failStart(err);
@@ -399,7 +387,6 @@ function onBtnClick(e){ startExperience(e, "START button click"); }
 startCatcher.addEventListener("touchstart", onStartTouch, {passive:false});
 startCatcher.addEventListener("pointerdown", onStartPointer, {passive:false});
 startCatcher.addEventListener("click", onStartClick, {passive:false});
-
 startBtn.addEventListener("touchstart", onBtnTouch, {passive:false});
 startBtn.addEventListener("click", onBtnClick, {passive:false});
 
