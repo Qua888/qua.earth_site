@@ -9,45 +9,46 @@
 
 <style>
 body{
-  margin:0;
-  overflow:hidden;
-  background:black;
-  height:100vh;
-  display:flex;
-  justify-content:center;
-  align-items:center;
+margin:0;
+overflow:hidden;
+background:black;
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+touch-action:manipulation;
 }
 
 #stars{
-  position:absolute;
-  z-index:1;
+position:absolute;
+z-index:1;
 }
 
 #threeCanvas{
-  position:absolute;
-  top:0;
-  left:0;
-  z-index:3;
-  cursor:pointer;
+position:absolute;
+top:0;
+left:0;
+z-index:3;
+cursor:pointer;
 }
 
 #return{
-  position:fixed;
-  bottom:28px;
-  left:50%;
-  transform:translateX(-50%);
-  z-index:5;
+position:fixed;
+bottom:28px;
+left:50%;
+transform:translateX(-50%);
+z-index:5;
 }
 
 button{
-  border:1px solid rgba(255,255,255,.3);
-  background:black;
-  color:white;
-  font-family:Georgia,serif;
-  letter-spacing:2px;
-  font-size:12px;
-  padding:10px 16px;
-  cursor:pointer;
+border:1px solid rgba(255,255,255,.3);
+background:black;
+color:white;
+font-family:Georgia,serif;
+letter-spacing:2px;
+font-size:12px;
+padding:10px 16px;
+cursor:pointer;
 }
 </style>
 </head>
@@ -57,11 +58,11 @@ button{
 <canvas id="stars"></canvas>
 
 <div id="return">
-  <button onclick="location.href='index.html'">Return</button>
+<button onclick="location.href='index.html'">Return</button>
 </div>
 
-<audio id="music" loop>
-  <source src="Track2_NewSong.mp3" type="audio/mpeg">
+<audio id="music" loop preload="auto">
+<source src="Track2_NewSong.mp3" type="audio/mpeg">
 </audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
@@ -87,11 +88,26 @@ let bassLevel=0
 let highLevel=0
 
 window.addEventListener("load",async ()=>{
-  try{
-    await audioCtx.resume()
-    await music.play()
-  }catch(e){}
+try{
+await audioCtx.resume()
+await music.play()
+}catch(e){}
 })
+
+/* MOBILE AUDIO UNLOCK */
+
+function unlockAudio(){
+
+audioCtx.resume()
+music.play()
+
+window.removeEventListener("touchstart",unlockAudio)
+window.removeEventListener("click",unlockAudio)
+
+}
+
+window.addEventListener("touchstart",unlockAudio,{once:true})
+window.addEventListener("click",unlockAudio,{once:true})
 
 /* STARFIELD SETUP */
 
@@ -104,16 +120,16 @@ canvas.height=window.innerHeight
 let stars=[]
 
 function buildStars(){
-  stars=[]
-  for(let i=0;i<1888;i++){
-    stars.push({
-      x:Math.random()*canvas.width,
-      y:Math.random()*canvas.height,
-      size:Math.random()*2,
-      speed:0.15+Math.random()*0.1,    // keep original speed
-      dir:Math.random()<0.5?1:-1       // up or down
-    })
-  }
+stars=[]
+for(let i=0;i<1888;i++){
+stars.push({
+x:Math.random()*canvas.width,
+y:Math.random()*canvas.height,
+size:Math.random()*2,
+speed:0.15+Math.random()*0.1,
+dir:Math.random()<0.5?1:-1
+})
+}
 }
 buildStars()
 
@@ -123,24 +139,24 @@ let pointerX=canvas.width/2
 let pointerY=canvas.height/2
 
 function updatePointer(x,y){
-  pointerX=x
-  pointerY=y
+pointerX=x
+pointerY=y
 }
 
 window.addEventListener("mousemove",(e)=>{
-  updatePointer(e.clientX,e.clientY)
+updatePointer(e.clientX,e.clientY)
 })
 
 window.addEventListener("click",(e)=>{
-  updatePointer(e.clientX,e.clientY)
+updatePointer(e.clientX,e.clientY)
 })
 
 window.addEventListener("touchstart",(e)=>{
-  updatePointer(e.touches[0].clientX,e.touches[0].clientY)
+updatePointer(e.touches[0].clientX,e.touches[0].clientY)
 })
 
 window.addEventListener("touchmove",(e)=>{
-  updatePointer(e.touches[0].clientX,e.touches[0].clientY)
+updatePointer(e.touches[0].clientX,e.touches[0].clientY)
 })
 
 /* THREE SCENE */
@@ -148,13 +164,14 @@ window.addEventListener("touchmove",(e)=>{
 const scene=new THREE.Scene()
 
 const camera=new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth/window.innerHeight,
-  0.1,
-  1000
+60,
+window.innerWidth/window.innerHeight,
+0.1,
+1000
 )
 
 const renderer=new THREE.WebGLRenderer({alpha:true})
+renderer.setPixelRatio(window.devicePixelRatio)
 renderer.setSize(window.innerWidth,window.innerHeight)
 
 renderer.domElement.id="threeCanvas"
@@ -167,47 +184,35 @@ starTexture.mapping=THREE.EquirectangularReflectionMapping
 
 /* SPHERE */
 
-/* subtle surface texture so rotation is visible */
-
-const sphereTextureCanvas = document.createElement("canvas")
-sphereTextureCanvas.width = 512
-sphereTextureCanvas.height = 512
-const stx = sphereTextureCanvas.getContext("2d")
+const sphereTextureCanvas=document.createElement("canvas")
+sphereTextureCanvas.width=512
+sphereTextureCanvas.height=512
+const stx=sphereTextureCanvas.getContext("2d")
 
 for(let i=0;i<6000;i++){
-  stx.fillStyle="rgba(255,255,255,0.02)"
-  stx.fillRect(
-    Math.random()*512,
-    Math.random()*512,
-    2,
-    2
-  )
+stx.fillStyle="rgba(255,255,255,0.02)"
+stx.fillRect(Math.random()*512,Math.random()*512,2,2)
 }
 
-const sphereTexture = new THREE.CanvasTexture(sphereTextureCanvas)
+const sphereTexture=new THREE.CanvasTexture(sphereTextureCanvas)
 
-/* sphere */
+const geometry=new THREE.SphereGeometry(0.5,64,64)
 
-const geometry = new THREE.SphereGeometry(0.5,64,64)
-
-const material = new THREE.MeshPhysicalMaterial({
-  color:0x106888,
-  metalness:1,
-  roughness:0.05,
-  map:sphereTexture,           // <-- THIS is what makes rotation visible
-  envMap:starTexture,
-  envMapIntensity:3.2,
-  clearcoat:1,
-  clearcoatRoughness:0.05
+const material=new THREE.MeshPhysicalMaterial({
+color:0x106888,
+metalness:1,
+roughness:0.05,
+map:sphereTexture,
+envMap:starTexture,
+envMapIntensity:3.2,
+clearcoat:1,
+clearcoatRoughness:0.05
 })
 
-const sphere = new THREE.Mesh(geometry,material)
-
+const sphere=new THREE.Mesh(geometry,material)
 scene.add(sphere)
 
-/* optional slight axial tilt like Earth */
-
-sphere.rotation.z = 0.05
+sphere.rotation.z=0.05
 
 /* CLOUD LAYER */
 
@@ -216,75 +221,79 @@ const cloudCanvas=document.createElement("canvas")
 cloudCanvas.width=512
 cloudCanvas.height=512
 const cloudCtx=cloudCanvas.getContext("2d")
+
 for(let i=0;i<20000;i++){
-    cloudCtx.fillStyle="rgba(255,255,255,0.3)"
-  cloudCtx.fillRect(
-    Math.random()*512,
-    Math.random()*512,
-    2,
-    2
-  )
+cloudCtx.fillStyle="rgba(255,255,255,0.3)"
+cloudCtx.fillRect(Math.random()*512,Math.random()*512,2,2)
 }
+
 const cloudTexture=new THREE.CanvasTexture(cloudCanvas)
+
 const cloudMaterial=new THREE.MeshBasicMaterial({
-  map:cloudTexture,
-  transparent:true,
-  opacity:0.30     // slightly brighter
+map:cloudTexture,
+transparent:true,
+opacity:0.30
 })
+
 const clouds=new THREE.Mesh(cloudGeometry,cloudMaterial)
 scene.add(clouds)
 
 /* GLOW */
 
 const glowGeometry=new THREE.SphereGeometry(0.63,64,64)
+
 const glowMaterial=new THREE.MeshBasicMaterial({
-  color:0xff66cc,
-  transparent:true,
-  opacity:0.08,
-  blending:THREE.AdditiveBlending
+color:0xff66cc,
+transparent:true,
+opacity:0.08,
+blending:THREE.AdditiveBlending
 })
+
 const glow=new THREE.Mesh(glowGeometry,glowMaterial)
 scene.add(glow)
 
-/* PLASMA CLOUD BEHIND THE SPHERE */
+/* PLASMA */
 
 const plasmaCanvas=document.createElement("canvas")
 plasmaCanvas.width=512
 plasmaCanvas.height=512
 const pctx=plasmaCanvas.getContext("2d")
 
-const pgrad = pctx.createRadialGradient(256,256,30,256,256,256)
+const pgrad=pctx.createRadialGradient(256,256,30,256,256,256)
 
-pgrad.addColorStop(0,"rgba(255,90,220,0.75)")   // hot neon pink core
+pgrad.addColorStop(0,"rgba(255,90,220,0.75)")
 pgrad.addColorStop(0.25,"rgba(255,60,190,0.55)")
-pgrad.addColorStop(0.55,"rgba(220,40,210,0.38)") // magenta
-pgrad.addColorStop(0.8,"rgba(150,20,200,0.25)")  // deep violet
+pgrad.addColorStop(0.55,"rgba(220,40,210,0.38)")
+pgrad.addColorStop(0.8,"rgba(150,20,200,0.25)")
 pgrad.addColorStop(1,"rgba(255,90,220,0)")
+
 pctx.fillStyle=pgrad
 pctx.fillRect(0,0,512,512)
 
 const plasmaTexture=new THREE.CanvasTexture(plasmaCanvas)
+
 const plasmaMaterial=new THREE.MeshBasicMaterial({
-  map:plasmaTexture,
-  transparent:true,
-  opacity:0.34,
-  blending:THREE.AdditiveBlending
+map:plasmaTexture,
+transparent:true,
+opacity:0.23,
+blending:THREE.AdditiveBlending
 })
+
 const plasma=new THREE.Mesh(
-  new THREE.SphereGeometry(0.72,64,64),
-  plasmaMaterial
+new THREE.SphereGeometry(0.72,64,64),
+plasmaMaterial
 )
+
 plasma.position.z=-0.05
 scene.add(plasma)
 
-const plasma2 = plasma.clone()
+const plasma2=plasma.clone()
 
-plasma2.position.z = 0.05
-
-// start opposite side of rotation
-plasma2.rotation.y = Math.PI
+plasma2.position.z=0.05
+plasma2.rotation.y=Math.PI
 
 scene.add(plasma2)
+
 /* LIGHT */
 
 const light=new THREE.PointLight(0xffffff,1.8)
@@ -293,19 +302,21 @@ scene.add(light)
 
 camera.position.z=3
 
-const raycaster = new THREE.Raycaster()
-const mouse = new THREE.Vector2()
+/* CLICK SPHERE TO PLAY */
+
+const raycaster=new THREE.Raycaster()
+const mouse=new THREE.Vector2()
 
 renderer.domElement.addEventListener("click",(event)=>{
 
-mouse.x = (event.clientX / window.innerWidth) * 2 - 1
-mouse.y = -(event.clientY / window.innerHeight) * 2 + 1
+mouse.x=(event.clientX/window.innerWidth)*2-1
+mouse.y=-(event.clientY/window.innerHeight)*2+1
 
 raycaster.setFromCamera(mouse,camera)
 
-const intersects = raycaster.intersectObject(sphere)
+const intersects=raycaster.intersectObject(sphere)
 
-if(intersects.length > 0){
+if(intersects.length>0){
 
 if(music.paused){
 music.play()
@@ -324,126 +335,183 @@ let bassPulse=0
 let starAngle=0
 
 function animate(){
-  requestAnimationFrame(animate)
 
-  /* AUDIO ANALYSIS */
-  analyser.getByteFrequencyData(data)
-  let bassSum=0, bassCount=0
-  let highSum=0, highCount=0
-  for(let i=0;i<data.length;i++){
-    const freq=i*(audioCtx.sampleRate/2)/data.length
-    if(freq<=108){
-      bassSum+=data[i]
-      bassCount++
-    }
-    if(freq>=900){
-      highSum+=data[i]
-      highCount++
-    }
-  }
-  bassLevel=(bassSum/bassCount)/255
-  highLevel=(highSum/highCount)/255
+requestAnimationFrame(animate)
 
-  /* STARFIELD UPDATE */
-  starAngle+=0.0003   // keep original rotation speed
-  ctx.clearRect(0,0,canvas.width,canvas.height)
-  const cx=canvas.width/2
-  const cy=canvas.height/2
-  const bubbleRadius=333
-  stars.forEach(s=>{
-    // vertical movement up or down (unaltered)
-    s.y+=s.speed*s.dir*(1+highLevel*2)
-    // wrap around top/bottom
-    if(s.dir===1 && s.y>canvas.height){
-      s.y=0
-      s.x=Math.random()*canvas.width
-    }
-    if(s.dir===-1 && s.y<0){
-      s.y=canvas.height
-      s.x=Math.random()*canvas.width
-    }
-    // rotate around centre
-    const dx=s.x-cx
-    const dy=s.y-cy
-    const cosA=Math.cos(starAngle)
-    const sinA=Math.sin(starAngle)
-    const rotatedX=dx*cosA - dy*sinA
-    const rotatedY=dx*sinA + dy*cosA
-    s.x=cx+rotatedX
-    s.y=cy+rotatedY
-    // bubble push away from pointer
-    const dxp=s.x-pointerX
-    const dyp=s.y-pointerY
-    const distp=Math.sqrt(dxp*dxp+dyp*dyp)
-    if(distp<bubbleRadius && distp>0.001){
-      const force=(bubbleRadius-distp)/bubbleRadius
-      s.x+=dxp/distp*force*7
-      s.y+=dyp/distp*force*7 
-    }
-    // draw star with brighter alpha
-    ctx.beginPath()
-    ctx.arc(
-      s.x,
-      s.y,
-      s.size*(1+highLevel*2),  // size still reacts to audio
-      0,
-      Math.PI*2
-    )
-    ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`
-    ctx.fill()
-  })
-  // update star reflection
-  starTexture.needsUpdate=true
+/* AUDIO */
 
-  /* SPHERE ROTATION (Earth-like) */
-  rotationY+=0.0015
-  sphere.rotation.y=rotationY
-  // gentle tilt oscillation
-  sphere.rotation.x=Math.sin(rotationY*0.2)*0.1
-  clouds.rotation.y = -rotationY*0.6
-  clouds.rotation.x=Math.sin(rotationY*0.15)*0.1
+analyser.getByteFrequencyData(data)
 
-  /* BASS PULSE */
-  if(bassLevel>bassPulse){
-    bassPulse=bassLevel
-  }
-  bassPulse*=0.88
-  const scale=1+bassPulse*0.35
-  sphere.scale.set(scale,scale,scale)
-  clouds.scale.set(scale,scale,scale)
-  glow.scale.set(scale*1.1,scale*1.1,scale*1.1)
-  plasma.rotation.y += 0.0016
-plasma.rotation.x += 0.00035
+let bassSum=0,bassCount=0
+let highSum=0,highCount=0
 
-plasma2.rotation.y -= 0.0016
-plasma2.rotation.x -= 0.00035
+for(let i=0;i<data.length;i++){
+
+const freq=i*(audioCtx.sampleRate/2)/data.length
+
+if(freq<=108){
+bassSum+=data[i]
+bassCount++
+}
+
+if(freq>=900){
+highSum+=data[i]
+highCount++
+}
+
+}
+
+bassLevel=(bassSum/bassCount)/255
+highLevel=(highSum/highCount)/255
+
+/* STARFIELD */
+
+starAngle+=0.0003
+
+ctx.clearRect(0,0,canvas.width,canvas.height)
+
+const cx=canvas.width/2
+const cy=canvas.height/2
+const bubbleRadius=333
+
+stars.forEach(s=>{
+
+s.y+=s.speed*s.dir*(1+highLevel*2)
+
+if(s.dir===1 && s.y>canvas.height){
+s.y=0
+s.x=Math.random()*canvas.width
+}
+
+if(s.dir===-1 && s.y<0){
+s.y=canvas.height
+s.x=Math.random()*canvas.width
+}
+
+const dx=s.x-cx
+const dy=s.y-cy
+
+const cosA=Math.cos(starAngle)
+const sinA=Math.sin(starAngle)
+
+const rotatedX=dx*cosA-dy*sinA
+const rotatedY=dx*sinA+dy*cosA
+
+s.x=cx+rotatedX
+s.y=cy+rotatedY
+
+const dxp=s.x-pointerX
+const dyp=s.y-pointerY
+const distp=Math.sqrt(dxp*dxp+dyp*dyp)
+
+if(distp<bubbleRadius && distp>0.001){
+
+const force=(bubbleRadius-distp)/bubbleRadius
+
+s.x+=dxp/distp*force*7
+s.y+=dyp/distp*force*7
+
+}
+
+ctx.beginPath()
+
+ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2)
+
+ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`
+ctx.fill()
+
+})
+
+starTexture.needsUpdate=true
+
+/* SPHERE ROTATION */
+
+rotationY+=0.0015
+
+sphere.rotation.y=rotationY
+sphere.rotation.x=Math.sin(rotationY*0.2)*0.1
+
+clouds.rotation.y=-rotationY*0.6
+clouds.rotation.x=Math.sin(rotationY*0.15)*0.1
+
+/* BASS */
+
+if(bassLevel>bassPulse){
+bassPulse=bassLevel
+}
+
+bassPulse*=0.88
+
+const scale=1+bassPulse*0.35
+
+sphere.scale.set(scale,scale,scale)
+clouds.scale.set(scale,scale,scale)
+glow.scale.set(scale*1.1,scale*1.1,scale*1.1)
+
+plasma.rotation.y+=0.0016
+plasma.rotation.x+=0.00035
+
+plasma2.rotation.y-=0.0016
+plasma2.rotation.x-=0.00035
 
 plasma.scale.set(
-  scale*1.2 + Math.sin(rotationY*2)*0.03,
-  scale*1.2 + Math.sin(rotationY*2)*0.03,
-  scale*1.2 + Math.sin(rotationY*2)*0.03
+scale*1.2+Math.sin(rotationY*2)*0.03,
+scale*1.2+Math.sin(rotationY*2)*0.03,
+scale*1.2+Math.sin(rotationY*2)*0.03
 )
 
 plasma2.scale.set(
-  scale*1.2 + Math.sin(rotationY*2)*0.03,
-  scale*1.2 + Math.sin(rotationY*2)*0.03,
-  scale*1.2 + Math.sin(rotationY*2)*0.03
+scale*1.2+Math.sin(rotationY*2)*0.03,
+scale*1.2+Math.sin(rotationY*2)*0.03,
+scale*1.2+Math.sin(rotationY*2)*0.03
 )
 
-  renderer.render(scene,camera)
+renderer.render(scene,camera)
+
 }
+
 animate()
 
 /* RESIZE */
+
 window.addEventListener("resize",()=>{
-  canvas.width=window.innerWidth
-  canvas.height=window.innerHeight
-  camera.aspect=window.innerWidth/window.innerHeight
-  camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth,window.innerHeight)
-  buildStars()
-  pointerX=canvas.width/2
-  pointerY=canvas.height/2
+
+canvas.width=window.innerWidth
+canvas.height=window.innerHeight
+
+camera.aspect=window.innerWidth/window.innerHeight
+camera.updateProjectionMatrix()
+
+renderer.setSize(window.innerWidth,window.innerHeight)
+
+buildStars()
+
+pointerX=canvas.width/2
+pointerY=canvas.height/2
+
+})
+
+/* ORIENTATION FIX */
+
+window.addEventListener("orientationchange",()=>{
+
+setTimeout(()=>{
+
+canvas.width=window.innerWidth
+canvas.height=window.innerHeight
+
+camera.aspect=window.innerWidth/window.innerHeight
+camera.updateProjectionMatrix()
+
+renderer.setSize(window.innerWidth,window.innerHeight)
+
+buildStars()
+
+pointerX=canvas.width/2
+pointerY=canvas.height/2
+
+},200)
+
 })
 
 </script>
