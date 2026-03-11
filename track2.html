@@ -32,18 +32,6 @@ body{
   pointer-events:none; /* enabled after start */
 }
 
-/* FULL-SCREEN START CATCHER (tap anywhere) */
-#startCatcher{
-  position:fixed;
-  inset:0;
-  z-index:50; /* above everything */
-  pointer-events:auto;
-  touch-action:manipulation;
-  -webkit-user-select:none;
-  user-select:none;
-  background:transparent;
-}
-
 /* TAP TEXT SCREEN (visual only) */
 #tapOverlay{
   position:fixed;
@@ -61,7 +49,11 @@ body{
   padding:40px;
   box-sizing:border-box;
 
-  pointer-events:none; /* IMPORTANT: don't rely on it for taps */
+  /* overlay should NOT block the document capture listeners */
+  pointer-events:none;
+
+  -webkit-user-select:none;
+  user-select:none;
 }
 
 #tapText{
@@ -96,10 +88,6 @@ button{
 
 <body>
 
-<!-- This catches the first tap ANYWHERE -->
-<div id="startCatcher" aria-label="Tap anywhere to start"></div>
-
-<!-- This is just the visual overlay -->
 <div id="tapOverlay">
   <div id="tapText">
     <p>
@@ -197,7 +185,7 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth,window.innerHeight);
 
 renderer.domElement.id = "threeCanvas";
-renderer.domElement.style.pointerEvents = "none";
+renderer.domElement.style.pointerEvents = "none"; // enable after start
 document.body.appendChild(renderer.domElement);
 
 /* STAR REFLECTION */
@@ -332,6 +320,8 @@ updatePortalAlignment();
    AUDIO
    ===== */
 
+const tapOverlay = document.getElementById("tapOverlay");
+
 const music = document.getElementById("music");
 music.volume = 0.16;
 
@@ -345,9 +335,6 @@ let highLevel = 0;
 
 let started = false;
 let ignoreCanvasClicksUntil = 0;
-
-const startCatcher = document.getElementById("startCatcher");
-const tapOverlay = document.getElementById("tapOverlay");
 
 async function startExperience(e){
   if(started) return;
@@ -383,18 +370,16 @@ async function startExperience(e){
   started = true;
   ignoreCanvasClicksUntil = performance.now() + 900;
 
-  // Hide visuals + stop catching gestures
   tapOverlay.style.display = "none";
-  startCatcher.style.display = "none";
-
-  // Enable interaction with WebGL now
   renderer.domElement.style.pointerEvents = "auto";
 }
 
-// Catch the FIRST gesture anywhere on the screen
-startCatcher.addEventListener("pointerdown", startExperience, { passive:false });
-startCatcher.addEventListener("touchstart", startExperience, { passive:false });
-startCatcher.addEventListener("click", startExperience, { passive:false });
+/* ✅ Catch the FIRST gesture anywhere (even if canvases/overlays intercept hit-testing)
+   capture:true makes it fire on the way down the event chain.
+   once:true ensures it only runs once. */
+document.addEventListener("touchstart", startExperience, { capture:true, passive:false, once:true });
+document.addEventListener("pointerdown", startExperience, { capture:true, passive:false, once:true });
+document.addEventListener("click", startExperience, { capture:true, passive:false, once:true });
 
 /* CLICK SPHERE */
 
