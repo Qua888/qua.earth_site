@@ -118,6 +118,7 @@ Symbol zero signifies the infinite womb where “no-thing” is in the capacity 
 <button onclick="location.href='index.html'">Return</button>
 </div>
 
+<!-- Updated audio element -->
 <audio id="music" src="Track2_NewSong.mp3" preload="auto" loop playsinline></audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
@@ -155,22 +156,33 @@ analyser.connect(audioCtx.destination)
 /* TAP SCREEN AUDIO UNLOCK */
 
 const tapOverlay = document.getElementById("tapOverlay")
+let experienceStarted = false
 
 function startExperience(){
 
-music.currentTime = 0
+  // Prevent double execution (click + touchstart on some devices)
+  if (experienceStarted) return
+  experienceStarted = true
 
-music.play().then(()=>{
+  // Resume the audio context before anything else
+  audioCtx.resume().then(() => {
 
-audioCtx.resume()
-connectAudio()
+    // Attach the audio element to the analyser and destination
+    if (!source) {
+      source = audioCtx.createMediaElementSource(music)
+      source.connect(analyser)
+      analyser.connect(audioCtx.destination)
+    }
 
-}).catch(err=>{
-console.log("play error:", err)
-})
+    // Reset the track and play it
+    music.currentTime = 0
+    music.play().catch(err => {
+      console.warn("Audio play prevented by browser:", err)
+    })
 
-tapOverlay.style.display = "none"
+  })
 
+  tapOverlay.style.display = "none"
 }
 
 tapOverlay.addEventListener("click", startExperience)
