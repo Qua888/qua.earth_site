@@ -9,106 +9,88 @@
 
 <style>
 body{
-  margin:0;
-  overflow:hidden;
-  background:black;
-  height:100vh;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  touch-action:manipulation;
+margin:0;
+overflow:hidden;
+background:black;
+height:100vh;
+display:flex;
+justify-content:center;
+align-items:center;
+touch-action:manipulation;
 }
 
 #stars{
-  position:absolute;
-  z-index:1;<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Qua — Sphere Chamber</title>
-
-<style>
-body{
-  margin:0;
-  overflow:hidden;
-  background:black;
-  height:100vh;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  touch-action:manipulation;
-}
-
-#stars{
-  position:absolute;
-  z-index:1;
+position:absolute;
+z-index:1;
 }
 
 #threeCanvas{
-  position:absolute;
-  top:0;
-  left:0;
-  z-index:3;
-  cursor:pointer;
+position:absolute;
+top:0;
+left:0;
+z-index:3;
+cursor:pointer;
 }
 
 /* TAP ACTIVATION SCREEN */
+
 #tapOverlay{
-  position:fixed;
-  top:0;
-  left:0;
-  width:100%;
-  height:100%;
-  background:black;
+position:fixed;
+top:0;
+left:0;
+width:100%;
+height:100%;
+background:black;
 
-  display:flex;
-  justify-content:center;
-  align-items:center;
+display:flex;
+justify-content:center;
+align-items:center;
 
-  color:white;
-  z-index:20;
-  font-family:Georgia,serif;
+color:white;
+z-index:20;
+font-family:Georgia,serif;
 
-  padding:40px;
-  box-sizing:border-box;
+padding:40px;
+box-sizing:border-box;
 
-  touch-action:manipulation;
-  -webkit-user-select:none;
-  user-select:none;
+touch-action:manipulation;
+-webkit-user-select:none;
+user-select:none;
 }
 
 #tapText{
-  max-width:720px;
-  width:100%;
-  text-align:center;
-  line-height:1.6;
-  font-size:18px;
-  margin:auto;
+max-width:720px;
+width:100%;
+text-align:center;
+line-height:1.6;
+font-size:18px;
+margin:auto;
 }
 
 #return{
-  position:fixed;
-  bottom:28px;
-  left:50%;
-  transform:translateX(-50%);
-  z-index:5;
+position:fixed;
+bottom:28px;
+left:50%;
+transform:translateX(-50%);
+z-index:5;
 }
 
 button{
-  border:1px solid rgba(255,255,255,.3);
-  background:black;
-  color:white;
-  font-family:Georgia,serif;
-  letter-spacing:2px;
-  font-size:12px;
-  padding:10px 16px;
-  cursor:pointer;
+border:1px solid rgba(255,255,255,.3);
+background:black;
+color:white;
+font-family:Georgia,serif;
+letter-spacing:2px;
+font-size:12px;
+padding:10px 16px;
+cursor:pointer;
 }
 </style>
 </head>
 
 <body>
+
+<!-- TAP SCREEN -->
 
 <div id="tapOverlay">
   <div id="tapText">
@@ -131,7 +113,7 @@ button{
 <canvas id="stars"></canvas>
 
 <div id="return">
-  <button onclick="location.href='index.html'">Return</button>
+<button onclick="location.href='index.html'">Return</button>
 </div>
 
 <audio id="music" loop playsinline preload="auto">
@@ -141,9 +123,8 @@ button{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 
 <script>
-/* =====================
-   AUDIO (MATCH PAGE 1)
-   ===================== */
+
+/* AUDIO */
 
 const music = document.getElementById("music");
 music.volume = 0.16;
@@ -156,6 +137,7 @@ source.connect(analyser);
 analyser.connect(audioCtx.destination);
 
 analyser.fftSize = 2048;
+
 const data = new Uint8Array(analyser.frequencyBinCount);
 
 let bassLevel = 0;
@@ -166,190 +148,203 @@ let highLevel = 0;
 const tapOverlay = document.getElementById("tapOverlay");
 
 let started = false;
-// stops same tap from also toggling pause via sphere click
 let ignoreCanvasClicksUntil = 0;
 
 async function startExperience(e){
-  if (started) return;
 
-  if (e){
-    e.preventDefault();
-    e.stopPropagation();
-  }
+if(started) return;
 
-  try{
-    await audioCtx.resume();     // MUST be inside gesture on iOS
-    await music.play();         // now it will actually be audible
-  }catch(err){
-    console.warn("Audio start failed:", err);
-    return;
-  }
-
-  started = true;
-  tapOverlay.style.display = "none";
-  ignoreCanvasClicksUntil = performance.now() + 700;
+if(e){
+e.preventDefault();
+e.stopPropagation();
 }
 
-tapOverlay.addEventListener("touchend", startExperience, { passive:false });
+try{ music.load(); }catch(_){}
+
+try{
+
+if(audioCtx.state === "suspended"){
+await audioCtx.resume();
+}
+
+const p = music.play();
+if(p && typeof p.then === "function"){
+await p;
+}
+
+}catch(err){
+console.warn("Audio start failed:", err);
+return;
+}
+
+started = true;
+
+tapOverlay.style.display = "none";
+ignoreCanvasClicksUntil = performance.now() + 900;
+
+}
+
+tapOverlay.addEventListener("touchstart", startExperience, { passive:false });
 tapOverlay.addEventListener("click", startExperience, { passive:false });
 
 /* STARFIELD */
 
-const canvas = document.getElementById("stars");
-const ctx = canvas.getContext("2d");
+const canvas=document.getElementById("stars");
+const ctx=canvas.getContext("2d");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
 
-let stars = [];
+let stars=[];
 
 function buildStars(){
-  stars = [];
-  for(let i=0;i<1888;i++){
-    stars.push({
-      x:Math.random()*canvas.width,
-      y:Math.random()*canvas.height,
-      size:Math.random()*2,
-      speed:0.15+Math.random()*0.1,
-      dir:Math.random()<0.5?1:-1
-    });
-  }
+stars=[];
+for(let i=0;i<1888;i++){
+stars.push({
+x:Math.random()*canvas.width,
+y:Math.random()*canvas.height,
+size:Math.random()*2,
+speed:0.15+Math.random()*0.1,
+dir:Math.random()<0.5?1:-1
+});
+}
 }
 
 buildStars();
 
 /* POINTER */
 
-let pointerX = canvas.width/2;
-let pointerY = canvas.height/2;
+let pointerX=canvas.width/2;
+let pointerY=canvas.height/2;
 
 function updatePointer(x,y){
-  pointerX = x;
-  pointerY = y;
+pointerX=x;
+pointerY=y;
 }
 
 window.addEventListener("mousemove",(e)=>{
-  updatePointer(e.clientX,e.clientY);
+updatePointer(e.clientX,e.clientY);
 });
 
 window.addEventListener("click",(e)=>{
-  updatePointer(e.clientX,e.clientY);
+updatePointer(e.clientX,e.clientY);
 });
 
 window.addEventListener("touchstart",(e)=>{
-  updatePointer(e.touches[0].clientX,e.touches[0].clientY);
+updatePointer(e.touches[0].clientX,e.touches[0].clientY);
 },{passive:true});
 
 window.addEventListener("touchmove",(e)=>{
-  updatePointer(e.touches[0].clientX,e.touches[0].clientY);
+updatePointer(e.touches[0].clientX,e.touches[0].clientY);
 },{passive:true});
 
 /* THREE SCENE */
 
-const scene = new THREE.Scene();
+const scene=new THREE.Scene();
 
-const portalGroup = new THREE.Group();
+const portalGroup=new THREE.Group();
 scene.add(portalGroup);
 
-const camera = new THREE.PerspectiveCamera(
-  60,
-  window.innerWidth/window.innerHeight,
-  0.1,
-  1000
+const camera=new THREE.PerspectiveCamera(
+60,
+window.innerWidth/window.innerHeight,
+0.1,
+1000
 );
 
-const renderer = new THREE.WebGLRenderer({alpha:true});
+const renderer=new THREE.WebGLRenderer({alpha:true});
 renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth,window.innerHeight);
 
-renderer.domElement.id = "threeCanvas";
+renderer.domElement.id="threeCanvas";
 document.body.appendChild(renderer.domElement);
 
 /* STAR REFLECTION */
 
-const starTexture = new THREE.CanvasTexture(canvas);
-starTexture.mapping = THREE.EquirectangularReflectionMapping;
+const starTexture=new THREE.CanvasTexture(canvas);
+starTexture.mapping=THREE.EquirectangularReflectionMapping;
 
 /* SPHERE */
 
-const sphereTextureCanvas = document.createElement("canvas");
-sphereTextureCanvas.width = 512;
-sphereTextureCanvas.height = 512;
-const stx = sphereTextureCanvas.getContext("2d");
+const sphereTextureCanvas=document.createElement("canvas");
+sphereTextureCanvas.width=512;
+sphereTextureCanvas.height=512;
+const stx=sphereTextureCanvas.getContext("2d");
 
 for(let i=0;i<6000;i++){
-  stx.fillStyle = "rgba(255,255,255,0.02)";
-  stx.fillRect(Math.random()*512,Math.random()*512,2,2);
+stx.fillStyle="rgba(255,255,255,0.02)";
+stx.fillRect(Math.random()*512,Math.random()*512,2,2);
 }
 
-const sphereTexture = new THREE.CanvasTexture(sphereTextureCanvas);
+const sphereTexture=new THREE.CanvasTexture(sphereTextureCanvas);
 
-const geometry = new THREE.SphereGeometry(0.5,64,64);
+const geometry=new THREE.SphereGeometry(0.5,64,64);
 
-const material = new THREE.MeshPhysicalMaterial({
-  color:0x106888,
-  metalness:1,
-  roughness:0.05,
-  map:sphereTexture,
-  envMap:starTexture,
-  envMapIntensity:3.2,
-  clearcoat:1,
-  clearcoatRoughness:0.05
+const material=new THREE.MeshPhysicalMaterial({
+color:0x106888,
+metalness:1,
+roughness:0.05,
+map:sphereTexture,
+envMap:starTexture,
+envMapIntensity:3.2,
+clearcoat:1,
+clearcoatRoughness:0.05
 });
 
-const sphere = new THREE.Mesh(geometry,material);
+const sphere=new THREE.Mesh(geometry,material);
 portalGroup.add(sphere);
 
-sphere.rotation.z = 0.05;
+sphere.rotation.z=0.05;
 
 /* CLOUDS */
 
-const cloudGeometry = new THREE.SphereGeometry(0.505,64,64);
+const cloudGeometry=new THREE.SphereGeometry(0.505,64,64);
 
-const cloudCanvas = document.createElement("canvas");
-cloudCanvas.width = 512;
-cloudCanvas.height = 512;
+const cloudCanvas=document.createElement("canvas");
+cloudCanvas.width=512;
+cloudCanvas.height=512;
 
-const cloudCtx = cloudCanvas.getContext("2d");
+const cloudCtx=cloudCanvas.getContext("2d");
 
 for(let i=0;i<20000;i++){
-  cloudCtx.fillStyle="rgba(255,255,255,0.3)";
-  cloudCtx.fillRect(Math.random()*512,Math.random()*512,2,2);
+cloudCtx.fillStyle="rgba(255,255,255,0.3)";
+cloudCtx.fillRect(Math.random()*512,Math.random()*512,2,2);
 }
 
-const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
+const cloudTexture=new THREE.CanvasTexture(cloudCanvas);
 
-const cloudMaterial = new THREE.MeshBasicMaterial({
-  map:cloudTexture,
-  transparent:true,
-  opacity:0.23
+const cloudMaterial=new THREE.MeshBasicMaterial({
+map:cloudTexture,
+transparent:true,
+opacity:0.23
 });
 
-const clouds = new THREE.Mesh(cloudGeometry,cloudMaterial);
+const clouds=new THREE.Mesh(cloudGeometry,cloudMaterial);
 portalGroup.add(clouds);
 
 /* GLOW */
 
-const glowGeometry = new THREE.SphereGeometry(0.63,64,64);
+const glowGeometry=new THREE.SphereGeometry(0.63,64,64);
 
-const glowMaterial = new THREE.MeshBasicMaterial({
-  color:0xff66cc,
-  transparent:true,
-  opacity:0.08,
-  blending:THREE.AdditiveBlending
+const glowMaterial=new THREE.MeshBasicMaterial({
+color:0xff66cc,
+transparent:true,
+opacity:0.08,
+blending:THREE.AdditiveBlending
 });
 
-const glow = new THREE.Mesh(glowGeometry,glowMaterial);
+const glow=new THREE.Mesh(glowGeometry,glowMaterial);
 portalGroup.add(glow);
 
 /* PLASMA */
 
-const plasmaCanvas = document.createElement("canvas");
-plasmaCanvas.width = 512;
-plasmaCanvas.height = 512;
+const plasmaCanvas=document.createElement("canvas");
+plasmaCanvas.width=512;
+plasmaCanvas.height=512;
 
-const pctx = plasmaCanvas.getContext("2d");
-const pgrad = pctx.createRadialGradient(256,256,30,256,256,256);
+const pctx=plasmaCanvas.getContext("2d");
+
+const pgrad=pctx.createRadialGradient(256,256,30,256,256,256);
 
 pgrad.addColorStop(0,"rgba(255,90,220,0.75)");
 pgrad.addColorStop(0.25,"rgba(255,60,190,0.55)");
@@ -357,198 +352,217 @@ pgrad.addColorStop(0.55,"rgba(220,40,210,0.38)");
 pgrad.addColorStop(0.8,"rgba(150,20,200,0.25)");
 pgrad.addColorStop(1,"rgba(255,90,220,0)");
 
-pctx.fillStyle = pgrad;
+pctx.fillStyle=pgrad;
 pctx.fillRect(0,0,512,512);
 
-const plasmaTexture = new THREE.CanvasTexture(plasmaCanvas);
+const plasmaTexture=new THREE.CanvasTexture(plasmaCanvas);
 
-const plasmaMaterial = new THREE.MeshBasicMaterial({
-  map:plasmaTexture,
-  transparent:true,
-  opacity:0.23,
-  blending:THREE.AdditiveBlending
+const plasmaMaterial=new THREE.MeshBasicMaterial({
+map:plasmaTexture,
+transparent:true,
+opacity:0.23,
+blending:THREE.AdditiveBlending
 });
 
-const plasma = new THREE.Mesh(
-  new THREE.SphereGeometry(0.72,64,64),
-  plasmaMaterial
+const plasma=new THREE.Mesh(
+new THREE.SphereGeometry(0.72,64,64),
+plasmaMaterial
 );
-plasma.position.z = -0.05;
+
+plasma.position.z=-0.05;
 portalGroup.add(plasma);
 
-const plasma2 = plasma.clone();
-plasma2.position.z = 0.05;
-plasma2.rotation.y = Math.PI;
+const plasma2=plasma.clone();
+plasma2.position.z=0.05;
+plasma2.rotation.y=Math.PI;
+
 portalGroup.add(plasma2);
 
 /* LIGHT */
 
-const light = new THREE.PointLight(0xffffff,1.8);
+const light=new THREE.PointLight(0xffffff,1.8);
 light.position.set(2,3,4);
 scene.add(light);
 
-camera.position.z = 3;
+camera.position.z=3;
 
 /* MOBILE POSITION FIX */
 
 function updatePortalAlignment(){
-  if(window.innerWidth < 768){
-    portalGroup.position.y = -0.26;
-  }else{
-    portalGroup.position.y = 0;
-  }
+
+if(window.innerWidth < 768){
+
+portalGroup.position.y=-0.26;
+
+}else{
+
+portalGroup.position.y=0;
+
 }
+
+}
+
 updatePortalAlignment();
 
-/* CLICK SPHERE (PLAY/PAUSE) */
+/* CLICK SPHERE */
 
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
+const raycaster=new THREE.Raycaster();
+const mouse=new THREE.Vector2();
 
 renderer.domElement.addEventListener("click",(event)=>{
 
-  if(performance.now() < ignoreCanvasClicksUntil) return;
+if(performance.now() < ignoreCanvasClicksUntil) return;
 
-  mouse.x=(event.clientX/window.innerWidth)*2-1;
-  mouse.y=-(event.clientY/window.innerHeight)*2+1;
+mouse.x=(event.clientX/window.innerWidth)*2-1;
+mouse.y=-(event.clientY/window.innerHeight)*2+1;
 
-  raycaster.setFromCamera(mouse,camera);
+raycaster.setFromCamera(mouse,camera);
 
-  const intersects = raycaster.intersectObject(sphere);
+const intersects=raycaster.intersectObject(sphere);
 
-  if(intersects.length>0){
+if(intersects.length>0){
 
-    if(audioCtx.state==="suspended"){
-      audioCtx.resume();
-    }
+if(audioCtx.state==="suspended"){
+audioCtx.resume();
+}
 
-    if(music.paused){
-      music.play();
-    }else{
-      music.pause();
-    }
-  }
+if(music.paused){
+music.play();
+}else{
+music.pause();
+}
+
+}
+
 });
 
 /* ANIMATION */
 
-let rotationY = 0;
-let bassPulse = 0;
-let starAngle = 0;
+let rotationY=0;
+let bassPulse=0;
+let starAngle=0;
 
 function animate(){
-  requestAnimationFrame(animate);
 
-  analyser.getByteFrequencyData(data);
+requestAnimationFrame(animate);
 
-  let bassSum=0,bassCount=0;
-  let highSum=0,highCount=0;
+analyser.getByteFrequencyData(data);
 
-  for(let i=0;i<data.length;i++){
-    const freq=i*(audioCtx.sampleRate/2)/data.length;
+let bassSum=0,bassCount=0;
+let highSum=0,highCount=0;
 
-    if(freq<=108){
-      bassSum+=data[i];
-      bassCount++;
-    }
+for(let i=0;i<data.length;i++){
 
-    if(freq>=900){
-      highSum+=data[i];
-      highCount++;
-    }
-  }
+const freq=i*(audioCtx.sampleRate/2)/data.length;
 
-  bassLevel=(bassSum/bassCount)/255;
-  highLevel=(highSum/highCount)/255;
+if(freq<=108){
+bassSum+=data[i];
+bassCount++;
+}
 
-  starAngle+=0.0003;
+if(freq>=900){
+highSum+=data[i];
+highCount++;
+}
 
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+}
 
-  const cx=canvas.width/2;
-  const cy=canvas.height/2;
-  const bubbleRadius=333;
+bassLevel=(bassSum/bassCount)/255;
+highLevel=(highSum/highCount)/255;
 
-  stars.forEach(s=>{
+starAngle+=0.0003;
 
-    s.y+=s.speed*s.dir*(1+highLevel*2);
+ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    if(s.dir===1 && s.y>canvas.height){
-      s.y=0;
-      s.x=Math.random()*canvas.width;
-    }
+const cx=canvas.width/2;
+const cy=canvas.height/2;
+const bubbleRadius=333;
 
-    if(s.dir===-1 && s.y<0){
-      s.y=canvas.height;
-      s.x=Math.random()*canvas.width;
-    }
+stars.forEach(s=>{
 
-    const dx=s.x-cx;
-    const dy=s.y-cy;
+s.y+=s.speed*s.dir*(1+highLevel*2);
 
-    const cosA=Math.cos(starAngle);
-    const sinA=Math.sin(starAngle);
+if(s.dir===1 && s.y>canvas.height){
+s.y=0;
+s.x=Math.random()*canvas.width;
+}
 
-    const rotatedX=dx*cosA-dy*sinA;
-    const rotatedY=dx*sinA+dy*cosA;
+if(s.dir===-1 && s.y<0){
+s.y=canvas.height;
+s.x=Math.random()*canvas.width;
+}
 
-    s.x=cx+rotatedX;
-    s.y=cy+rotatedY;
+const dx=s.x-cx;
+const dy=s.y-cy;
 
-    const dxp=s.x-pointerX;
-    const dyp=s.y-pointerY;
-    const distp=Math.sqrt(dxp*dxp+dyp*dyp);
+const cosA=Math.cos(starAngle);
+const sinA=Math.sin(starAngle);
 
-    if(distp<bubbleRadius && distp>0.001){
-      const force=(bubbleRadius-distp)/bubbleRadius;
-      s.x+=dxp/distp*force*7;
-      s.y+=dyp/distp*force*7;
-    }
+const rotatedX=dx*cosA-dy*sinA;
+const rotatedY=dx*sinA+dy*cosA;
 
-    ctx.beginPath();
-    ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2);
-    ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`;
-    ctx.fill();
+s.x=cx+rotatedX;
+s.y=cy+rotatedY;
 
-  });
+const dxp=s.x-pointerX;
+const dyp=s.y-pointerY;
+const distp=Math.sqrt(dxp*dxp+dyp*dyp);
 
-  starTexture.needsUpdate=true;
+if(distp<bubbleRadius && distp>0.001){
 
-  rotationY+=0.0015;
+const force=(bubbleRadius-distp)/bubbleRadius;
 
-  sphere.rotation.y=rotationY;
-  sphere.rotation.x=Math.sin(rotationY*0.2)*0.1;
+s.x+=dxp/distp*force*7;
+s.y+=dyp/distp*force*7;
 
-  clouds.rotation.y=-rotationY*0.6;
-  clouds.rotation.x=Math.sin(rotationY*0.15)*0.1;
+}
 
-  if(bassLevel>bassPulse){
-    bassPulse=bassLevel;
-  }
+ctx.beginPath();
+ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2);
+ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`;
+ctx.fill();
 
-  bassPulse*=0.88;
+});
 
-  const scale=1+bassPulse*0.35;
+starTexture.needsUpdate=true;
 
-  sphere.scale.set(scale,scale,scale);
-  clouds.scale.set(scale,scale,scale);
-  glow.scale.set(scale*1.1,scale*1.1,scale*1.1);
+rotationY+=0.0015;
 
-  plasma.rotation.y+=0.0016;
-  plasma.rotation.x+=0.00035;
+sphere.rotation.y=rotationY;
+sphere.rotation.x=Math.sin(rotationY*0.2)*0.1;
 
-  plasma2.rotation.y-=0.0016;
-  plasma2.rotation.x-=0.00035;
+clouds.rotation.y=-rotationY*0.6;
+clouds.rotation.x=Math.sin(rotationY*0.15)*0.1;
 
-  let plasmaSize=1.2;
-  if(window.innerWidth<768){
-    plasmaSize=1.0;
-  }
+if(bassLevel>bassPulse){
+bassPulse=bassLevel;
+}
 
-  plasma.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
-  plasma2.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
+bassPulse*=0.88;
 
-  renderer.render(scene,camera);
+const scale=1+bassPulse*0.35;
+
+sphere.scale.set(scale,scale,scale);
+clouds.scale.set(scale,scale,scale);
+glow.scale.set(scale*1.1,scale*1.1,scale*1.1);
+
+plasma.rotation.y+=0.0016;
+plasma.rotation.x+=0.00035;
+
+plasma2.rotation.y-=0.0016;
+plasma2.rotation.x-=0.00035;
+
+let plasmaSize=1.2;
+
+if(window.innerWidth<768){
+plasmaSize=1.0;
+}
+
+plasma.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
+plasma2.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
+
+renderer.render(scene,camera);
+
 }
 
 animate();
@@ -557,46 +571,48 @@ animate();
 
 window.addEventListener("resize",()=>{
 
-  canvas.width=window.innerWidth;
-  canvas.height=window.innerHeight;
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
 
-  camera.aspect=window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
+camera.aspect=window.innerWidth/window.innerHeight;
+camera.updateProjectionMatrix();
 
-  renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setSize(window.innerWidth,window.innerHeight);
 
-  buildStars();
+buildStars();
 
-  pointerX=canvas.width/2;
-  pointerY=canvas.height/2;
+pointerX=canvas.width/2;
+pointerY=canvas.height/2;
 
-  updatePortalAlignment();
+updatePortalAlignment();
+
 });
 
 /* ORIENTATION */
 
 window.addEventListener("orientationchange",()=>{
 
-  setTimeout(()=>{
+setTimeout(()=>{
 
-    canvas.width=window.innerWidth;
-    canvas.height=window.innerHeight;
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
 
-    camera.aspect=window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
+camera.aspect=window.innerWidth/window.innerHeight;
+camera.updateProjectionMatrix();
 
-    renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setSize(window.innerWidth,window.innerHeight);
 
-    buildStars();
+buildStars();
 
-    pointerX=canvas.width/2;
-    pointerY=canvas.height/2;
+pointerX=canvas.width/2;
+pointerY=canvas.height/2;
 
-    updatePortalAlignment();
+updatePortalAlignment();
 
-  },200);
+},200);
 
 });
+
 </script>
 
 </body>
