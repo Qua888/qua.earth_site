@@ -158,19 +158,18 @@ const tapOverlay = document.getElementById("tapOverlay")
 
 function startExperience(){
 
-audioCtx.resume()
-
 music.currentTime = 0
 
 music.play().then(()=>{
 
+audioCtx.resume()
 connectAudio()
 
 }).catch(err=>{
-console.log("play blocked:", err)
+console.log("play error:", err)
 })
 
-tapOverlay.style.display="none"
+tapOverlay.style.display = "none"
 
 }
 
