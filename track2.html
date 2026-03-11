@@ -119,7 +119,10 @@ Symbol zero signifies the infinite womb where “no-thing” is in the capacity 
 </div>
 
 <!-- Updated audio element -->
-<audio id="music" src="Track2_NewSong.mp3" preload="auto" loop playsinline></audio>
+<!-- Replace your audio element with this -->
+<audio id="music" loop playsinline>
+  <source src="Track2_NewSong.mp3" type="audio/mpeg">
+</audio>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 
@@ -127,66 +130,43 @@ Symbol zero signifies the infinite womb where “no-thing” is in the capacity 
 
 /* AUDIO */
 
-const music=document.getElementById("music")
-music.volume=0.16
+const music = document.getElementById("music")
+music.volume = 0.16
 
-const audioCtx=new (window.AudioContext||window.webkitAudioContext)()
-const analyser=audioCtx.createAnalyser()
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+const analyser = audioCtx.createAnalyser()
 
-let source=null
+const source = audioCtx.createMediaElementSource(music)
 
-analyser.fftSize=2048
-const data=new Uint8Array(analyser.frequencyBinCount)
-
-let bassLevel=0
-let highLevel=0
-
-function connectAudio(){
-
-if(!source){
-
-source=audioCtx.createMediaElementSource(music)
 source.connect(analyser)
 analyser.connect(audioCtx.destination)
 
-}
+analyser.fftSize = 2048
 
-}
+const data = new Uint8Array(analyser.frequencyBinCount)
+
+let bassLevel = 0
+let highLevel = 0
+
 
 /* TAP SCREEN AUDIO UNLOCK */
 
-const tapOverlay = document.getElementById("tapOverlay");
-let experienceStarted = false;
+const tapOverlay = document.getElementById("tapOverlay")
 
-function startExperience() {
-  if (experienceStarted) return;
-  experienceStarted = true;
+function startExperience(){
 
-  // Resume context and start playback immediately
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-  music.currentTime = 0;
-  music.play().catch(err => {
-    console.warn("Audio play prevented:", err);
-  });
-
-  // When the audio can play, connect it into the Web Audio graph
-  music.addEventListener('canplay', () => {
-    if (!source) {
-      source = audioCtx.createMediaElementSource(music);
-      // Split the signal: analyser for visualization, destination for speakers
-      source.connect(analyser);
-      source.connect(audioCtx.destination);
-      analyser.connect(audioCtx.destination);
-    }
-  }, { once: true });
-
-  tapOverlay.style.display = 'none';
+if(audioCtx.state === "suspended"){
+audioCtx.resume()
 }
 
-tapOverlay.addEventListener("click", startExperience);
-tapOverlay.addEventListener("touchstart", startExperience);
+music.play()
+
+tapOverlay.style.display = "none"
+
+}
+
+tapOverlay.addEventListener("click", startExperience)
+tapOverlay.addEventListener("touchstart", startExperience)
 
 /* STARFIELD */
 
