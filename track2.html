@@ -156,22 +156,27 @@ analyser.connect(audioCtx.destination)
 
 /* TAP SCREEN AUDIO UNLOCK */
 
-const tapOverlay=document.getElementById("tapOverlay")
+/* TAP SCREEN AUDIO UNLOCK */
+
+const tapOverlay = document.getElementById("tapOverlay")
 
 function startExperience(){
 
+audioCtx.resume().then(()=>{
+
 connectAudio()
 
-audioCtx.resume()
-
+music.currentTime = 0
 music.play().catch(()=>{})
 
-tapOverlay.style.display="none"
+tapOverlay.style.display = "none"
+
+})
 
 }
 
-tapOverlay.addEventListener("click",startExperience)
-tapOverlay.addEventListener("touchstart",startExperience)
+tapOverlay.addEventListener("click", startExperience)
+tapOverlay.addEventListener("touchstart", startExperience)
 
 /* STARFIELD */
 
