@@ -61,7 +61,7 @@ cursor:pointer;
 <button onclick="location.href='index.html'">Return</button>
 </div>
 
-<audio id="music" loop playsinline>
+<audio id="music" loop autoplay muted playsinline>
 <source src="Track2_NewSong.mp3" type="audio/mpeg">
 </audio>
 
@@ -97,7 +97,7 @@ analyser.connect(audioCtx.destination)
 
 }
 
-/* DESKTOP AUTOPLAY */
+/* AUTOPLAY ON PAGE ARRIVAL */
 
 window.addEventListener("load",async ()=>{
 
@@ -106,35 +106,18 @@ try{
 connectAudio()
 
 await audioCtx.resume()
+
 await music.play()
+
+music.muted=false
 
 }catch(e){
 
-console.log("autoplay blocked on mobile")
+console.log("autoplay prevented")
 
 }
 
 })
-
-/* MOBILE AUDIO UNLOCK */
-
-function unlockAudio(){
-
-connectAudio()
-
-audioCtx.resume().then(()=>{
-
-music.play().catch(()=>{})
-
-})
-
-window.removeEventListener("touchstart",unlockAudio)
-window.removeEventListener("click",unlockAudio)
-
-}
-
-window.addEventListener("touchstart",unlockAudio,{once:true})
-window.addEventListener("click",unlockAudio,{once:true})
 
 /* STARFIELD */
 
@@ -172,6 +155,10 @@ pointerY=y
 }
 
 window.addEventListener("mousemove",(e)=>{
+updatePointer(e.clientX,e.clientY)
+})
+
+window.addEventListener("click",(e)=>{
 updatePointer(e.clientX,e.clientY)
 })
 
@@ -244,9 +231,11 @@ sphere.rotation.z=0.05
 /* CLOUDS */
 
 const cloudGeometry=new THREE.SphereGeometry(0.505,64,64)
+
 const cloudCanvas=document.createElement("canvas")
 cloudCanvas.width=512
 cloudCanvas.height=512
+
 const cloudCtx=cloudCanvas.getContext("2d")
 
 for(let i=0;i<20000;i++){
@@ -284,6 +273,7 @@ portalGroup.add(glow)
 const plasmaCanvas=document.createElement("canvas")
 plasmaCanvas.width=512
 plasmaCanvas.height=512
+
 const pctx=plasmaCanvas.getContext("2d")
 
 const pgrad=pctx.createRadialGradient(256,256,30,256,256,256)
@@ -317,6 +307,7 @@ portalGroup.add(plasma)
 const plasma2=plasma.clone()
 plasma2.position.z=0.05
 plasma2.rotation.y=Math.PI
+
 portalGroup.add(plasma2)
 
 /* LIGHT */
@@ -327,19 +318,49 @@ scene.add(light)
 
 camera.position.z=3
 
-/* MOBILE PORTAL POSITION */
+/* MOBILE POSITION FIX */
 
 function updatePortalAlignment(){
 
 if(window.innerWidth < 768){
+
 portalGroup.position.y=-0.26
+
 }else{
+
 portalGroup.position.y=0
+
 }
 
 }
 
 updatePortalAlignment()
+
+/* CLICK SPHERE */
+
+const raycaster=new THREE.Raycaster()
+const mouse=new THREE.Vector2()
+
+renderer.domElement.addEventListener("click",(event)=>{
+
+mouse.x=(event.clientX/window.innerWidth)*2-1
+mouse.y=-(event.clientY/window.innerHeight)*2+1
+
+raycaster.setFromCamera(mouse,camera)
+
+const intersects=raycaster.intersectObject(sphere)
+
+if(intersects.length>0){
+
+if(music.paused){
+music.play()
+}else{
+music.pause()
+}
+
+}
+
+})
 
 /* ANIMATION */
 
@@ -397,6 +418,31 @@ s.y=canvas.height
 s.x=Math.random()*canvas.width
 }
 
+const dx=s.x-cx
+const dy=s.y-cy
+
+const cosA=Math.cos(starAngle)
+const sinA=Math.sin(starAngle)
+
+const rotatedX=dx*cosA-dy*sinA
+const rotatedY=dx*sinA+dy*cosA
+
+s.x=cx+rotatedX
+s.y=cy+rotatedY
+
+const dxp=s.x-pointerX
+const dyp=s.y-pointerY
+const distp=Math.sqrt(dxp*dxp+dyp*dyp)
+
+if(distp<bubbleRadius && distp>0.001){
+
+const force=(bubbleRadius-distp)/bubbleRadius
+
+s.x+=dxp/distp*force*7
+s.y+=dyp/distp*force*7
+
+}
+
 ctx.beginPath()
 ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2)
 ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`
@@ -412,6 +458,7 @@ sphere.rotation.y=rotationY
 sphere.rotation.x=Math.sin(rotationY*0.2)*0.1
 
 clouds.rotation.y=-rotationY*0.6
+clouds.rotation.x=Math.sin(rotationY*0.15)*0.1
 
 if(bassLevel>bassPulse){
 bassPulse=bassLevel
@@ -426,7 +473,10 @@ clouds.scale.set(scale,scale,scale)
 glow.scale.set(scale*1.1,scale*1.1,scale*1.1)
 
 plasma.rotation.y+=0.0016
+plasma.rotation.x+=0.00035
+
 plasma2.rotation.y-=0.0016
+plasma2.rotation.x-=0.00035
 
 let plasmaSize=1.2
 
@@ -442,6 +492,52 @@ renderer.render(scene,camera)
 }
 
 animate()
+
+/* RESIZE */
+
+window.addEventListener("resize",()=>{
+
+canvas.width=window.innerWidth
+canvas.height=window.innerHeight
+
+camera.aspect=window.innerWidth/window.innerHeight
+camera.updateProjectionMatrix()
+
+renderer.setSize(window.innerWidth,window.innerHeight)
+
+buildStars()
+
+pointerX=canvas.width/2
+pointerY=canvas.height/2
+
+updatePortalAlignment()
+
+})
+
+/* ORIENTATION */
+
+window.addEventListener("orientationchange",()=>{
+
+setTimeout(()=>{
+
+canvas.width=window.innerWidth
+canvas.height=window.innerHeight
+
+camera.aspect=window.innerWidth/window.innerHeight
+camera.updateProjectionMatrix()
+
+renderer.setSize(window.innerWidth,window.innerHeight)
+
+buildStars()
+
+pointerX=canvas.width/2
+pointerY=canvas.height/2
+
+updatePortalAlignment()
+
+},200)
+
+})
 
 </script>
 
