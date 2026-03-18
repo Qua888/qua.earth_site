@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" translate="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Infinity Amulets</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
+
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{
+      min-height:100vh;
+      overflow-x:hidden;
+      background:black;
+      font-family:Georgia,serif;
+      touch-action:manipulation;
+    }
+
+    /* Tap-to-enter overlay (Qua-style audio unlock) */
+    #tapScreen{
+      position:fixed;
+      inset:0;
+      background:black;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      align-items:center;
+      gap:14px;
+      z-index:100;
+      color:white;
+      letter-spacing:3px;
+      text-align:center;
+      cursor:pointer;
+      transition:opacity 1.2s ease;
+      padding:24px;
+    }
+    #tapScreen .small{
+      opacity:0.75;
+      letter-spacing:2px;
+      font-size:12px;
+      line-height:1.8;
+    }
+
+    /* Top bar */
+    #topBar{
+      position:fixed;
+      top:0;
+      left:0;
+      right:0;
+      height:54px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:0 14px;
+      z-index:20;
+      background:rgba(0,0,0,0.88);
+      border-bottom:1px solid rgba(255,255,255,0.12);
+      pointer-events:auto;
+    }
+
+    .barBtn{
+      appearance:none;
+      -webkit-appearance:none;
+      border:1px solid rgba(255,255,255,0.22);
+      background:transparent;
+      color:white;
+      font-family:Georgia,serif;
+      letter-spacing:2px;
+      font-size:11px;
+      padding:9px 12px;
+      cursor:pointer;
+      opacity:0.92;
+      transition:transform .2s ease, opacity .2s ease;
+    }
+    .barBtn:hover{transform:scale(1.03);opacity:1;}
+    .barRight{display:flex;gap:10px;align-items:center;}
+
+    /* Parallax container */
+    .parallax-container{
+      height:100vh;
+      position:relative;
+      overflow:hidden;
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      text-align:center;
+    }
+
+    .sun-link, .title-link{
+      text-decoration:none;
+      color:inherit;
+    }
+
+    /* Sun */
+    .parallax-sun{
+      width:min(58vw,520px);
+      position:absolute;
+      top:50%;
+      left:50%;
+      transform:translate(-50%,-50%) scale(1.0);
+      z-index:1;
+      animation:breathingRotation 88s ease-in-out infinite;
+      will-change:transform;
+      user-select:none;
+      -webkit-user-drag:none;
+      pointer-events:auto;
+    }
+
+    @keyframes breathingRotation{
+      0%,100%{ transform:translate(-50%,-50%) scale(.8) rotate(0deg); }
+      50%{ transform:translate(-50%,-50%) scale(2.1) rotate(360deg); }
+      100%{ transform:translate(-50%,-50%) scale(.8) rotate(720deg); }
+    }
+
+    /* Title */
+    .title-glow{
+      font-family:'Cinzel Decorative', cursive;
+      color:rgba(0,0,0,0.85);
+      font-size:clamp(2rem, 5vw, 3.2rem);
+      z-index:10;
+      text-shadow:
+        0 0 5px rgba(255,255,255,0.5),
+        0 0 10px rgba(255,255,255,0.5),
+        0 0 15px rgba(255,255,255,0.5);
+      position:absolute;
+      top:calc(50% + 40px);
+      left:50%;
+      transform:translate(-50%,-50%);
+      opacity:0.88;
+      letter-spacing:2px;
+      will-change:transform;
+      pointer-events:auto;
+    }
+
+    /* Subtext */
+    #subText{
+      position:absolute;
+      bottom:28px;
+      left:50%;
+      transform:translateX(-50%);
+      color:rgba(255,255,255,0.75);
+      font-family:Georgia,serif;
+      letter-spacing:2px;
+      font-size:12px;
+      text-align:center;
+      z-index:12;
+      padding:0 18px;
+      line-height:1.8;
+      opacity:0.85;
+      pointer-events:none;
+    }
+
+    /* Small mobile tweaks */
+    @media (max-width:768px){
+      #topBar{height:50px;}
+      .barBtn{font-size:10px;letter-spacing:1.6px;padding:8px 10px;}
+      .parallax-sun{width:min(72vw,520px);}
+      .title-glow{top:calc(50% + 34px);}
+    }
+  </style>
+</head>
+
+<body>
+  <div id="tapScreen">
+    <div style="font-size:22px;">Infinity Amulets</div>
+    <div class="small">
+      Tap to enter<br/>
+      (unlocks audio on mobile)
+    </div>
+  </div>
+
+  <header id="topBar">
+    <button class="barBtn" id="btnBack">Back to Qua</button>
+
+    <div class="barRight">
+      <button class="barBtn" id="btnMute">Mute</button>
+      <button class="barBtn" id="btnShop">Shop</button>
+    </div>
+  </header>
+
+  <main class="parallax-container">
+    <a href="products_page/products.html" class="title-link" aria-label="Go to products">
+      <h1 class="title-glow">Infinity Amulets</h1>
+    </a>
+
+    <a href="products_page/products.html" class="sun-link" aria-label="Go to products">
+      <img src="sun.jpeg" alt="Sun Image" class="parallax-sun" />
+    </a>
+
+    <div id="subText">
+      Sacred objects • Harmonic design • More soon
+    </div>
+  </main>
+
+  <!-- Audio: autoplay after user gesture (tapScreen click) -->
+  <audio id="background-music" loop preload="auto" playsinline>
+    <source src="amulets.mp3" type="audio/mpeg" />
+  </audio>
+
+  <script>
+    const tapScreen = document.getElementById("tapScreen");
+    const musicEl = document.getElementById("background-music");
+
+    const btnBack = document.getElementById("btnBack");
+    const btnShop = document.getElementById("btnShop");
+    const btnMute = document.getElementById("btnMute");
+
+    const sun = document.querySelector(".parallax-sun");
+    const title = document.querySelector(".title-glow");
+
+    // AudioContext unlock (matches your Qua approach)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaElementSource(musicEl);
+    source.connect(audioCtx.destination);
+
+    musicEl.volume = 0.2;
+
+    function enterSite(){
+      if(audioCtx.state === "suspended"){
+        audioCtx.resume();
+      }
+
+      musicEl.play().catch(()=>{ /* ignore */ });
+
+      tapScreen.style.opacity = "0";
+      setTimeout(()=>{ tapScreen.style.display = "none"; }, 1200);
+    }
+
+    tapScreen.addEventListener("click", enterSite, { passive:true });
+
+    btnBack.addEventListener("click", ()=>{
+      window.location.href = "../index.html";
+    });
+
+    btnShop.addEventListener("click", ()=>{
+      window.location.href = "products_page/products.html";
+    });
+
+    btnMute.addEventListener("click", ()=>{
+      musicEl.muted = !musicEl.muted;
+      btnMute.textContent = musicEl.muted ? "Unmute" : "Mute";
+    });
+
+    // Parallax: translate sun + title on scroll (keeps your original behavior)
+    document.addEventListener("scroll", ()=>{
+      const scrollY = window.scrollY;
+
+      const sunTransformY = scrollY * 1.0;
+      const titleTransformY = scrollY * 0.3;
+
+      // Preserve base translate(-50%,-50%) and add parallax translateY
+      sun.style.transform = `translate(-50%, -50%) translateY(${sunTransformY}px)`;
+      title.style.transform = `translate(-50%, -50%) translateY(${titleTransformY}px)`;
+    }, { passive:true });
+  </script>
+</body>
+</html>
