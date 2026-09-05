@@ -1,0 +1,2289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Qua — Ocean Flight</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: Georgia, serif;
+      touch-action: none;
+    }
+
+    #scene {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      cursor: grab;
+      outline: none;
+    }
+
+    #scene.dragging { cursor: grabbing; }
+
+    #nav {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: linear-gradient(to bottom, rgba(10, 12, 22, 0.94), rgba(0, 0, 0, 0.96));
+      color: #fff;
+      font-family: Georgia, serif;
+      letter-spacing: 2px;
+      font-size: 12px;
+      padding: 10px 16px;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: rgba(120, 220, 255, 0.40); }
+
+    #hint {
+      position: fixed;
+      top: 14px;
+      right: 16px;
+      z-index: 20;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 11px;
+      letter-spacing: 1px;
+      line-height: 1.45;
+      text-align: right;
+      text-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+      user-select: none;
+      white-space: pre-line;
+    }
+
+    @media (max-width: 768px) {
+      #hint {
+        top: 10px;
+        right: 10px;
+        font-size: 10px;
+      }
+
+      #nav {
+        bottom: 14px;
+        gap: 8px;
+      }
+
+      button {
+        font-size: 11px;
+        padding: 9px 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="scene" tabindex="0"></div>
+
+  <div id="nav">
+    <button type="button" onclick="location.href='index.html'">Return</button>
+    <button type="button" onclick="location.href='track2.html'">Back</button>
+    <button id="playPauseBtn" type="button">Play</button>
+    <button type="button" onclick="location.href='track4.html'">Next</button>
+  </div>
+
+  <div id="hint">drag = look around
+↑ ↓ = forward / back
+← → = drift
+Q / E = altitude
+drag also disturbs sun ring
+click white star = return</div>
+
+  <audio id="music" loop playsinline preload="auto">
+    <source src="aquariantransmissions.mp3" type="audio/mpeg">
+  </audio>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script>
+    const host = document.getElementById("scene");
+    const music = document.getElementById("music");
+    const playPauseBtn = document.getElementById("playPauseBtn");
+
+    const WATER_LEVEL = 0;
+    const MIN_ALTITUDE = -1800;
+    const MAX_ALTITUDE = 10080;
+    const AXIS_BASE_SPEED = 280;
+    const AXIS_MAX_SPEED = 2800;
+    const AXIS_ACCEL_CURVE = 4.4;
+    const STRAFE_SPEED_MULTIPLIER = 0.123;
+    const FORWARD_SPEED_MULTIPLIER = 0.235;
+    const WAVE_SCALE = 2.8;
+    const WAVE_SPACING = 1.68;
+    const BASE_WAVE_TIME_SCALE = 1.28;
+    const IDLE_WAVE_BOOST = 1.28;
+
+    const WORLD_SUN_POSITION = new THREE.Vector3(0, 5200, 13200);
+    const WORLD_ISLAND_POSITION = new THREE.Vector3(0, -120, 12950);
+    const SUN_PORTAL_RADIUS = 1500;
+    const PORTAL_PARTICLE_COUNT = 2800;
+    const PORTAL_WARP_STAR_COUNT = 2200;
+    const PORTAL_WARP_STREAK_COUNT = 900;
+    const PORTAL_ORB_COUNT = 242;
+    const PORTAL_PARTICLE_RANGE = 9000;
+    const BEAM_SPIRAL_PARTICLE_COUNT = 0;
+
+    const BASE_SKY_TOP = new THREE.Color(0x4e7fb5);
+    const BASE_SKY_MID = new THREE.Color(0x97a7d1);
+    const BASE_SKY_BOTTOM = new THREE.Color(0xffdfc7);
+    const BASE_WATER_DEEP = new THREE.Color(0x235a84);
+    const BASE_WATER_MID = new THREE.Color(0x3d7aa8);
+    const BASE_WATER_SHALLOW = new THREE.Color(0x56a2d1);
+    const BASE_WATER_MIST = new THREE.Color(0xc8d9e7);
+
+    const state = {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      lastTime: 0,
+      waveClock: 0,
+      pointerActive: false,
+      pointerId: null,
+      lastPointerX: 0,
+      lastPointerY: 0,
+      underwater: false,
+      moveEnergy: 0,
+      keys: { left: false, right: false, forward: false, back: false, down: false, up: false },
+      holds: { xPos: 0, xNeg: 0, yPos: 0, yNeg: 0, zPos: 0, zNeg: 0 },
+      flight: {
+        x: 0,
+        y: 430,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        targetVx: 0,
+        targetVy: 0,
+        targetVz: 0,
+        yaw: 0,
+        targetYaw: 0,
+        pitch: -0.28,
+        targetPitch: -0.28,
+        bobPhase: 0
+      },
+      ring: {
+        dragActive: false,
+        offsetX: 0,
+        offsetY: 0,
+        offsetZ: 0,
+        targetOffsetX: 0,
+        targetOffsetY: 0,
+        targetOffsetZ: 0,
+        touchEnergy: 0,
+        touchPulse: 0,
+        autoSpinX: 0
+      },
+      portal: {
+        active: false,
+        blend: 0,
+        yaw: 0,
+        pitch: 0,
+        targetYaw: 0,
+        targetPitch: 0,
+        exitCooldown: 0
+      },
+      musicStarted: false,
+      autoplayBlocked: false
+    };
+
+    let audioCtx = null;
+    let analyser = null;
+    let mediaSource = null;
+    let audioData = null;
+
+    const audioState = {
+      sub: 0,
+      bass: 0,
+      low: 0,
+      mid: 0,
+      high: 0,
+      air: 0,
+      overall: 0,
+      kick: 0,
+      kickBody: 0,
+      kickTransient: 0,
+      prevKickEnergy: 0
+    };
+
+    const responseState = { flow: 0, shimmer: 0, bloom: 0, ring: 0 };
+
+    function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
+    function saturate(value) { return clamp(value, 0, 1); }
+    function randomBetween(min, max) { return min + Math.random() * (max - min); }
+    function wrapValue(value, min, max) {
+      const range = max - min;
+      let wrapped = value;
+      while (wrapped < min) wrapped += range;
+      while (wrapped > max) wrapped -= range;
+      return wrapped;
+    }
+
+    function ensureAudio() {
+      if (audioCtx) return;
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.80;
+      mediaSource = audioCtx.createMediaElementSource(music);
+      mediaSource.connect(analyser);
+      analyser.connect(audioCtx.destination);
+      audioData = new Uint8Array(analyser.frequencyBinCount);
+      music.volume = 0.95;
+    }
+
+    async function tryStartAudio() {
+      try {
+        ensureAudio();
+        if (audioCtx.state === "suspended") await audioCtx.resume();
+        await music.play();
+        state.musicStarted = true;
+        state.autoplayBlocked = false;
+      } catch (_) {
+        state.autoplayBlocked = true;
+      }
+      syncPlayPauseLabel();
+    }
+
+    function startAudio() { tryStartAudio().catch(() => {}); }
+    function syncPlayPauseLabel() { playPauseBtn.textContent = music.paused ? "Play" : "Pause"; }
+
+    async function togglePlayback() {
+      try {
+        ensureAudio();
+        if (music.paused) {
+          if (audioCtx.state === "suspended") await audioCtx.resume();
+          await music.play();
+          state.musicStarted = true;
+          state.autoplayBlocked = false;
+        } else {
+          music.pause();
+        }
+      } catch (_) {}
+      syncPlayPauseLabel();
+    }
+
+    function updateAudio() {
+      if (!analyser || !audioData || !audioCtx) {
+        audioState.sub *= 0.92;
+        audioState.bass *= 0.92;
+        audioState.low *= 0.92;
+        audioState.mid *= 0.92;
+        audioState.high *= 0.92;
+        audioState.air *= 0.92;
+        audioState.overall *= 0.92;
+        audioState.kick *= 0.86;
+        audioState.kickBody *= 0.90;
+        audioState.kickTransient *= 0.72;
+        return;
+      }
+
+      analyser.getByteFrequencyData(audioData);
+      let subSum = 0, subCount = 0;
+      let bassSum = 0, bassCount = 0;
+      let lowSum = 0, lowCount = 0;
+      let midSum = 0, midCount = 0;
+      let highSum = 0, highCount = 0;
+      let airSum = 0, airCount = 0;
+      let kickSum = 0, kickCount = 0;
+      let kickTailSum = 0, kickTailCount = 0;
+      let totalSum = 0;
+
+      for (let i = 0; i < audioData.length; i++) {
+        const freq = i * (audioCtx.sampleRate / 2) / audioData.length;
+        const value = audioData[i] / 255;
+        totalSum += value;
+
+        if (freq < 60) { subSum += value; subCount++; }
+        else if (freq < 120) { bassSum += value; bassCount++; }
+        else if (freq < 200) { lowSum += value; lowCount++; }
+        else if (freq < 1200) { midSum += value; midCount++; }
+        else if (freq < 4200) { highSum += value; highCount++; }
+        else { airSum += value; airCount++; }
+
+        if (freq >= 45 && freq <= 95) { kickSum += value; kickCount++; }
+        else if (freq > 95 && freq <= 145) { kickTailSum += value; kickTailCount++; }
+      }
+
+      const sub = subCount ? subSum / subCount : 0;
+      const bass = bassCount ? bassSum / bassCount : 0;
+      const low = lowCount ? lowSum / lowCount : 0;
+      const mid = midCount ? midSum / midCount : 0;
+      const high = highCount ? highSum / highCount : 0;
+      const air = airCount ? airSum / airCount : 0;
+      const overall = totalSum / audioData.length;
+      const kickBand = kickCount ? kickSum / kickCount : 0;
+      const kickTail = kickTailCount ? kickTailSum / kickTailCount : 0;
+      const kickEnergy = kickBand * 0.78 + kickTail * 0.22;
+      const kickTransient = Math.max(0, kickEnergy - audioState.prevKickEnergy * 0.90);
+
+      audioState.prevKickEnergy = kickEnergy;
+      audioState.sub += (sub - audioState.sub) * 0.16;
+      audioState.bass += (bass - audioState.bass) * 0.14;
+      audioState.low += (low - audioState.low) * 0.14;
+      audioState.mid += (mid - audioState.mid) * 0.10;
+      audioState.high += (high - audioState.high) * 0.10;
+      audioState.air += (air - audioState.air) * 0.08;
+      audioState.overall += (overall - audioState.overall) * 0.10;
+      audioState.kickBody += (kickEnergy - audioState.kickBody) * 0.22;
+      audioState.kickTransient = Math.max(audioState.kickTransient * 0.76, kickTransient * 1.9);
+      audioState.kick = clamp(audioState.kickBody * 0.62 + audioState.kickTransient * 1.08, 0, 1.6);
+    }
+
+    function updateElegantResponse(dt) {
+      const flowTarget = saturate(audioState.mid * 0.78 + audioState.overall * 0.18 + audioState.kick * 0.24);
+      const shimmerTarget = saturate(audioState.high * 0.82 + audioState.air * 0.42);
+      const bloomTarget = saturate(audioState.kick * 0.42 + audioState.mid * 0.26 + audioState.high * 0.12);
+      const ringTarget = saturate(audioState.mid * 0.58 + audioState.high * 0.28 + audioState.kick * 0.24);
+
+      responseState.flow = THREE.MathUtils.lerp(responseState.flow, flowTarget, Math.min(1, dt * 3.0));
+      responseState.shimmer = THREE.MathUtils.lerp(responseState.shimmer, shimmerTarget, Math.min(1, dt * 3.4));
+      responseState.bloom = THREE.MathUtils.lerp(responseState.bloom, bloomTarget, Math.min(1, dt * 3.0));
+      responseState.ring = THREE.MathUtils.lerp(responseState.ring, ringTarget, Math.min(1, dt * 3.2));
+
+      state.portal.blend = THREE.MathUtils.lerp(state.portal.blend, state.portal.active ? 1 : 0, Math.min(1, dt * 1.8));
+      state.portal.yaw = THREE.MathUtils.lerp(state.portal.yaw, state.portal.targetYaw, Math.min(1, dt * 7.0));
+      state.portal.pitch = THREE.MathUtils.lerp(state.portal.pitch, state.portal.targetPitch, Math.min(1, dt * 7.0));
+      state.flight.yaw = THREE.MathUtils.lerp(state.flight.yaw, state.flight.targetYaw, Math.min(1, dt * 7.0));
+      state.flight.pitch = THREE.MathUtils.lerp(state.flight.pitch, state.flight.targetPitch, Math.min(1, dt * 7.0));
+      state.portal.exitCooldown = Math.max(0, state.portal.exitCooldown - dt);
+    }
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setSize(state.width, state.height);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setClearColor(0x82a6cb, 1);
+    host.appendChild(renderer.domElement);
+    renderer.domElement.tabIndex = 0;
+    renderer.domElement.style.outline = "none";
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0xc7d8e7, 9000, 56000);
+
+    const camera = new THREE.PerspectiveCamera(50, state.width / state.height, 1, 160000);
+    camera.position.set(0, state.flight.y, 0);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const sunPosition = WORLD_SUN_POSITION.clone();
+
+    const skyGeometry = new THREE.SphereGeometry(120000, 36, 24);
+    const skyMaterial = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        uTop: { value: BASE_SKY_TOP.clone() },
+        uMid: { value: BASE_SKY_MID.clone() },
+        uBottom: { value: BASE_SKY_BOTTOM.clone() },
+        uSunPosition: { value: sunPosition.clone() },
+        uUnderwater: { value: 0 },
+        uUnderwaterDepth: { value: 0 }
+      },
+      vertexShader: `
+        varying vec3 vDir;
+        void main() {
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vDir = normalize(worldPos.xyz - cameraPosition);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uTop;
+        uniform vec3 uMid;
+        uniform vec3 uBottom;
+        uniform vec3 uSunPosition;
+        uniform float uUnderwater;
+        uniform float uUnderwaterDepth;
+        varying vec3 vDir;
+
+        void main() {
+          float h = clamp(vDir.y * 0.5 + 0.5, 0.0, 1.0);
+          vec3 lowBand = mix(uBottom, uMid, smoothstep(0.0, 0.45, h));
+          vec3 airColor = mix(lowBand, uTop, smoothstep(0.34, 1.0, h));
+          vec3 sunDir = normalize(uSunPosition - cameraPosition);
+          float sunCore = pow(max(dot(normalize(vDir), sunDir), 0.0), 1200.0);
+          float sunGlow = pow(max(dot(normalize(vDir), sunDir), 0.0), 70.0);
+          airColor += vec3(1.0, 0.98, 0.94) * sunCore * 1.45;
+          airColor += vec3(1.0, 0.90, 0.78) * sunGlow * 0.28;
+          vec3 underwaterTop = vec3(0.30, 0.64, 0.70);
+          vec3 underwaterBottom = vec3(0.06, 0.18, 0.22);
+          vec3 waterColor = mix(underwaterBottom, underwaterTop, pow(h, 1.7));
+          float lookingUp = pow(max(vDir.y, 0.0), 2.4);
+          float underwaterSun = pow(max(dot(normalize(vDir), sunDir), 0.0), 20.0);
+          float underwaterGlow = pow(max(dot(normalize(vDir), sunDir), 0.0), 40.0);
+          waterColor += vec3(0.46, 0.78, 0.84) * lookingUp * 0.55;
+          waterColor += vec3(0.92, 0.99, 1.0) * underwaterSun * (0.74 - uUnderwaterDepth * 0.16);
+          waterColor += vec3(0.64, 0.90, 0.98) * underwaterGlow * 0.56;
+          gl_FragColor = vec4(mix(airColor, waterColor, uUnderwater), 1.0);
+        }
+      `
+    });
+    const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+    scene.add(sky);
+
+    const hemiLight = new THREE.HemisphereLight(0xe6eef7, 0x1a3955, 1.0);
+    scene.add(hemiLight);
+    const dirLight = new THREE.DirectionalLight(0xfff3e2, 2.2);
+    scene.add(dirLight);
+    const underLight = new THREE.DirectionalLight(0x8ee6ff, 0.0);
+    scene.add(underLight);
+
+    function createGlowTexture(innerColor, outerColor) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext("2d");
+      const grad = ctx.createRadialGradient(128, 128, 14, 128, 128, 126);
+      grad.addColorStop(0, innerColor);
+      grad.addColorStop(0.26, outerColor);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 256, 256);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    const sunTexture = createGlowTexture("rgba(255,252,245,1)", "rgba(255,208,180,0.28)");
+    const sunSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: sunTexture,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false
+    }));
+    sunSprite.scale.set(2200, 2200, 1);
+    sunSprite.renderOrder = 10;
+    scene.add(sunSprite);
+
+    const shipTexture = createGlowTexture("rgba(255,255,250,1)", "rgba(255,225,202,0.28)");
+    const shipGroup = new THREE.Group();
+    scene.add(shipGroup);
+
+    function createRingSystem({ particleCount, radiusY, radiusZ, thickness, color, size, opacity, renderOrder }) {
+      const positions = new Float32Array(particleCount * 3);
+      const scales = new Float32Array(particleCount);
+      const angles = new Float32Array(particleCount);
+      const radialOffsets = new Float32Array(particleCount);
+      const depthOffsets = new Float32Array(particleCount);
+
+      for (let i = 0; i < particleCount; i++) {
+        const index = i * 3;
+        const angle = Math.random() * Math.PI * 2;
+        const radialJitter = randomBetween(-thickness, thickness);
+        const depthJitter = randomBetween(-thickness * 0.34, thickness * 0.34);
+        angles[i] = angle;
+        radialOffsets[i] = radialJitter;
+        depthOffsets[i] = depthJitter;
+        scales[i] = randomBetween(0.45, 1.35);
+        positions[index] = depthJitter;
+        positions[index + 1] = Math.cos(angle) * (radiusY + radialJitter);
+        positions[index + 2] = Math.sin(angle) * (radiusZ + radialJitter * 0.42);
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.PointsMaterial({
+        color,
+        size,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity,
+        depthWrite: false,
+        depthTest: true,
+        blending: THREE.AdditiveBlending
+      });
+      const points = new THREE.Points(geometry, material);
+      points.rotation.set(0, -0.12, 0.10);
+      points.renderOrder = renderOrder;
+      points.frustumCulled = false;
+      scene.add(points);
+      return { particleCount, radiusY, radiusZ, positions, scales, angles, radialOffsets, depthOffsets, geometry, material, points };
+    }
+
+    const mainRing = createRingSystem({
+      particleCount: 2800,
+      radiusY: 2900,
+      radiusZ: 1180,
+      thickness: 180,
+      color: 0xffd7b8,
+      size: 22,
+      opacity: 0.78,
+      renderOrder: 5
+    });
+
+    const outerRing = createRingSystem({
+      particleCount: 2200,
+      radiusY: 3550,
+      radiusZ: 1450,
+      thickness: 120,
+      color: 0xffdff2,
+      size: 13,
+      opacity: 0.34,
+      renderOrder: 4
+    });
+
+    const formationDefinitions = [
+      { anchor: new THREE.Vector3(-18000, 1800, 12000), slots: [[0, 420, 0], [-1700, -240, 1100], [1700, -240, 1100], [-850, 120, 2200], [850, 120, 2200]] },
+      { anchor: new THREE.Vector3(-7000, 2400, 18500), slots: [[0, 420, 0], [-1900, 80, 900], [1900, 80, 900], [-1100, -260, 2200], [1100, -260, 2200]] },
+      { anchor: new THREE.Vector3(5000, 3000, 24500), slots: [[0, 0, 0], [0, 420, 1600], [-1700, 0, 800], [1700, 0, 800], [0, -360, 2600]] },
+      { anchor: new THREE.Vector3(18500, 2200, 31000), slots: [[0, 520, 0], [-1600, 0, 1200], [1600, 0, 1200], [0, -420, 2400]] },
+      { anchor: new THREE.Vector3(-13000, 4200, 38000), slots: [[0, 500, 0], [-1800, 180, 900], [1800, 180, 900], [-1200, -260, 2200], [1200, -260, 2200]] },
+      { anchor: new THREE.Vector3(3000, 5000, 47000), slots: [[0, 520, 0], [-1500, 160, 1000], [1500, 160, 1000], [-700, -260, 2200], [700, -260, 2200]] }
+    ];
+
+    const skyShips = [];
+    const ambientSkyShips = [];
+
+    function createShipSprite(baseOpacity = 0.78) {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: shipTexture,
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        opacity: baseOpacity
+      }));
+      sprite.renderOrder = 6;
+      shipGroup.add(sprite);
+      return sprite;
+    }
+
+    formationDefinitions.forEach((formation, formationIndex) => {
+      formation.slots.forEach((slotArray) => {
+        skyShips.push({
+          sprite: createShipSprite(0.90),
+          formationIndex,
+          slot: new THREE.Vector3(slotArray[0], slotArray[1], slotArray[2]),
+          slotJitter: new THREE.Vector3(randomBetween(-90, 90), randomBetween(-70, 70), randomBetween(-100, 100)),
+          scale: randomBetween(500, 760),
+          phase: Math.random() * Math.PI * 2,
+          drift: randomBetween(0.7, 1.35),
+          pulseBias: randomBetween(0.95, 1.5),
+          localOrbit: randomBetween(0.65, 1.25),
+          twinkleRate: randomBetween(1.4, 2.8),
+          twinkleDepth: randomBetween(0.08, 0.22),
+          strafeBias: randomBetween(0.8, 1.4)
+        });
+      });
+    });
+
+    for (let i = 0; i < 42; i++) {
+      const highBand = Math.random() < 0.84;
+      ambientSkyShips.push({
+        sprite: createShipSprite(0.76),
+        base: new THREE.Vector3(randomBetween(-32000, 32000), highBand ? randomBetween(7200, 15200) : randomBetween(2600, 7000), randomBetween(10000, 52000)),
+        scale: highBand ? randomBetween(240, 520) : randomBetween(320, 660),
+        phase: Math.random() * Math.PI * 2,
+        drift: randomBetween(0.35, 1.2),
+        pulseBias: randomBetween(0.7, 1.35),
+        swayX: randomBetween(380, 1600),
+        swayY: randomBetween(40, 320),
+        swayZ: randomBetween(160, 1100),
+        lowBias: highBand ? 0 : (Math.random() < 0.38 ? randomBetween(-1000, 0) : 0),
+        twinkleRate: randomBetween(3.8, 7.2),
+        twinkleDepth: randomBetween(0.18, 0.38),
+        highBand,
+        strafeBias: randomBetween(0.9, 1.7)
+      });
+    }
+
+    for (let i = 0; i < 58; i++) {
+      const farHigh = Math.random() < 0.78;
+      ambientSkyShips.push({
+        sprite: createShipSprite(0.70),
+        base: new THREE.Vector3(
+          randomBetween(-36000, 36000),
+          farHigh ? randomBetween(9000, 19000) : randomBetween(5200, 9800),
+          randomBetween(-32000, -5600)
+        ),
+        scale: farHigh ? randomBetween(220, 500) : randomBetween(300, 620),
+        phase: Math.random() * Math.PI * 2,
+        drift: randomBetween(0.28, 1.05),
+        pulseBias: randomBetween(0.65, 1.28),
+        swayX: randomBetween(480, 1900),
+        swayY: randomBetween(70, 420),
+        swayZ: randomBetween(240, 1300),
+        lowBias: farHigh ? 0 : randomBetween(-600, 300),
+        twinkleRate: randomBetween(3.2, 7.8),
+        twinkleDepth: randomBetween(0.16, 0.42),
+        highBand: farHigh,
+        strafeBias: randomBetween(0.85, 1.75)
+      });
+    }
+
+    function createRuneTexture(seed = 0) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 96;
+      canvas.height = 96;
+      const ctx = canvas.getContext("2d");
+
+      ctx.clearRect(0, 0, 96, 96);
+      ctx.translate(48, 48);
+      ctx.rotate((seed % 1) * 0.10 - 0.05);
+      ctx.translate(-48, -48);
+
+      ctx.shadowColor = "rgba(120, 210, 255, 0.7)";
+      ctx.shadowBlur = 16;
+      const glyphs = ["ॐ", "श्री", "ह्रीं", "क्लीं", "रं", "यं", "नमः", "सः"];
+      const glyph = glyphs[Math.floor(seed * 17) % glyphs.length];
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = glyph.length > 2 ? "34px Georgia, serif" : "44px Georgia, serif";
+      ctx.fillStyle = "rgba(225, 246, 255, 0.96)";
+      ctx.fillText(glyph, 48, 48);
+
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(178, 232, 255, 0.72)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(18, 23);
+      ctx.quadraticCurveTo(48, 17, 78, 23);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(132, 255, 218, 0.42)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(48, 51, 31, Math.PI * 0.08, Math.PI * 0.92);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.58)";
+      ctx.beginPath();
+      ctx.arc(76, 27, 2.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function pseudoRandom(seed, index) {
+      const value = Math.sin(seed * 91.7 + index * 37.31) * 43758.5453;
+      return value - Math.floor(value);
+    }
+
+    function createGlyphTabletTexture(seed = 0) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 128;
+      const ctx = canvas.getContext("2d");
+
+      ctx.clearRect(0, 0, 256, 128);
+      ctx.shadowColor = "rgba(115, 215, 255, 0.68)";
+      ctx.shadowBlur = 14;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      const phrases = [
+        "ॐ नमः",
+        "श्रीं ह्रीं",
+        "ॐ श्री",
+        "रं यं",
+        "ह्रीं ॐ",
+        "सः नमः",
+        "ॐ क्लीं",
+        "श्री नमः"
+      ];
+      const phrase = phrases[Math.floor(seed * 13) % phrases.length];
+
+      ctx.font = "34px Georgia, serif";
+      ctx.fillStyle = "rgba(230, 250, 255, 0.94)";
+      ctx.fillText(phrase, 128, 62);
+
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(178, 232, 255, 0.70)";
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(30, 31);
+      ctx.quadraticCurveTo(128, 19 + pseudoRandom(seed, 4) * 10, 226, 31);
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(126, 255, 214, 0.45)";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(42, 93);
+      ctx.quadraticCurveTo(128, 104 - pseudoRandom(seed, 8) * 8, 214, 93);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.arc(42 + i * 42 + pseudoRandom(seed, i + 20) * 5, 36 + pseudoRandom(seed, i + 30) * 52, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      return texture;
+    }
+
+    function makeBeamTexture() {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 1024;
+      const ctx = canvas.getContext("2d");
+      const g = ctx.createLinearGradient(0, 0, 256, 0);
+      g.addColorStop(0.00, "rgba(130,220,255,0)");
+      g.addColorStop(0.10, "rgba(100,210,255,0.32)");
+      g.addColorStop(0.25, "rgba(190,130,255,0.44)");
+      g.addColorStop(0.42, "rgba(255,118,220,0.40)");
+      g.addColorStop(0.56, "rgba(150,170,255,0.34)");
+      g.addColorStop(0.72, "rgba(92,255,198,0.42)");
+      g.addColorStop(0.90, "rgba(108,220,255,0.34)");
+      g.addColorStop(1.00, "rgba(130,220,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 256, 1024);
+      const vertical = ctx.createLinearGradient(0, 0, 0, 1024);
+      vertical.addColorStop(0, "rgba(255,255,255,0)");
+      vertical.addColorStop(0.13, "rgba(255,255,255,0.72)");
+      vertical.addColorStop(0.50, "rgba(255,255,255,0.62)");
+      vertical.addColorStop(0.82, "rgba(255,255,255,0.48)");
+      vertical.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.fillStyle = vertical;
+      ctx.fillRect(0, 0, 256, 1024);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function createIslandLandmark() {
+      const group = new THREE.Group();
+      group.position.copy(WORLD_ISLAND_POSITION);
+      scene.add(group);
+
+      const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x3e4247, roughness: 0.98, metalness: 0.04 });
+      const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x5b5a58, roughness: 0.92, metalness: 0.03 });
+      const portalStoneMaterial = new THREE.MeshStandardMaterial({
+        color: 0x696765,
+        roughness: 0.78,
+        metalness: 0.08,
+        emissive: new THREE.Color(0x82c6ff),
+        emissiveIntensity: 0.08
+      });
+
+      const islandBase = new THREE.Mesh(new THREE.IcosahedronGeometry(980, 1), rockMaterial);
+      islandBase.scale.set(1.65, 0.48, 1.18);
+      islandBase.position.set(0, 110, 0);
+      group.add(islandBase);
+
+      const islandShelf = new THREE.Mesh(new THREE.CylinderGeometry(1240, 920, 210, 9), rockMaterial);
+      islandShelf.position.set(0, 10, 0);
+      islandShelf.rotation.y = 0.25;
+      group.add(islandShelf);
+
+      const islandTop = new THREE.Mesh(new THREE.IcosahedronGeometry(640, 0), rockMaterial);
+      islandTop.scale.set(1.22, 0.62, 0.94);
+      islandTop.position.set(0, 250, 40);
+      group.add(islandTop);
+
+      for (let i = 0; i < 6; i++) {
+        const spur = new THREE.Mesh(new THREE.BoxGeometry(randomBetween(120, 220), randomBetween(140, 300), randomBetween(100, 180)), rockMaterial);
+        spur.position.set(Math.cos(i / 6 * Math.PI * 2) * randomBetween(420, 720), randomBetween(70, 190), Math.sin(i / 6 * Math.PI * 2) * randomBetween(280, 560));
+        spur.rotation.set(randomBetween(-0.18, 0.18), randomBetween(0, Math.PI), randomBetween(-0.18, 0.18));
+        group.add(spur);
+      }
+
+      const ruinsGroup = new THREE.Group();
+      ruinsGroup.position.set(0, 250, 50);
+      group.add(ruinsGroup);
+
+      [
+        { x: -420, y: 170, z: -40, w: 140, h: 340, d: 120 },
+        { x: -180, y: 120, z: -130, w: 110, h: 240, d: 90 },
+        { x: 160, y: 200, z: -60, w: 150, h: 400, d: 130 },
+        { x: 420, y: 150, z: 0, w: 130, h: 300, d: 120 },
+        { x: 0, y: 120, z: 180, w: 240, h: 180, d: 110 }
+      ].forEach((ruin, index) => {
+        const tower = new THREE.Mesh(new THREE.BoxGeometry(ruin.w, ruin.h, ruin.d), stoneMaterial);
+        tower.position.set(ruin.x, ruin.y, ruin.z);
+        tower.rotation.y = index * 0.18 + randomBetween(-0.08, 0.08);
+        ruinsGroup.add(tower);
+        const breakCap = new THREE.Mesh(new THREE.BoxGeometry(ruin.w * 0.84, ruin.h * 0.18, ruin.d * 0.84), stoneMaterial);
+        breakCap.position.set(ruin.x + randomBetween(-18, 18), ruin.y + ruin.h * 0.43, ruin.z + randomBetween(-12, 12));
+        breakCap.rotation.set(randomBetween(-0.22, 0.22), randomBetween(-0.3, 0.3), randomBetween(-0.2, 0.2));
+        ruinsGroup.add(breakCap);
+      });
+
+      const portalGroup = new THREE.Group();
+      portalGroup.position.set(20, 250, 240);
+      ruinsGroup.add(portalGroup);
+
+      const portalRing = new THREE.Mesh(new THREE.TorusGeometry(285, 42, 24, 96, Math.PI), portalStoneMaterial);
+      portalGroup.add(portalRing);
+
+      const portalOuterHalo = new THREE.Mesh(new THREE.RingGeometry(230, 330, 88, 1, 0, Math.PI), new THREE.MeshBasicMaterial({
+        color: 0xa9ddff,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }));
+      portalOuterHalo.position.z = 12;
+      portalGroup.add(portalOuterHalo);
+
+      const portalCore = new THREE.Mesh(new THREE.RingGeometry(122, 236, 88, 1, 0, Math.PI), new THREE.MeshBasicMaterial({
+        color: 0x90d2ff,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }));
+      portalCore.position.z = 6;
+      portalGroup.add(portalCore);
+
+      const portalGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: createGlowTexture("rgba(210,245,255,0.95)", "rgba(110,190,255,0.28)"),
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        opacity: 0.28
+      }));
+      portalGlow.scale.set(650, 650, 1);
+      portalGlow.position.set(0, 0, 20);
+      portalGroup.add(portalGlow);
+
+      const runeMeshes = [];
+      const archRuneCount = 13;
+      for (let i = 0; i < archRuneCount; i++) {
+        const angle = Math.PI * 0.16 + (i / (archRuneCount - 1)) * Math.PI * 0.68;
+        const rune = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshBasicMaterial({
+          map: createRuneTexture(i * 0.37),
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          blending: THREE.AdditiveBlending,
+          opacity: 0.78
+        }));
+        rune.position.set(Math.cos(angle) * 286, Math.sin(angle) * 286, 26);
+        rune.rotation.z = angle + Math.PI * 0.5;
+        rune.userData.baseZ = 26;
+        rune.userData.phase = i * 0.6;
+        rune.userData.baseRot = rune.rotation.z;
+        rune.renderOrder = 16;
+        portalGroup.add(rune);
+        runeMeshes.push(rune);
+      }
+
+      const archGlyphMeshes = [];
+      const archGlyphCount = 9;
+      for (let i = 0; i < archGlyphCount; i++) {
+        const angle = Math.PI * 0.19 + (i / (archGlyphCount - 1)) * Math.PI * 0.62;
+        const glyph = new THREE.Mesh(
+          new THREE.PlaneGeometry(118, 58),
+          new THREE.MeshBasicMaterial({
+            map: createGlyphTabletTexture(i * 0.43 + 4.1),
+            transparent: true,
+            depthWrite: false,
+            depthTest: false,
+            side: THREE.DoubleSide,
+            blending: THREE.AdditiveBlending,
+            opacity: 0.54
+          })
+        );
+        glyph.position.set(Math.cos(angle) * 292, Math.sin(angle) * 292, 42);
+        glyph.rotation.z = angle + Math.PI * 0.5;
+        glyph.userData.baseZ = 42;
+        glyph.userData.phase = i * 0.48;
+        glyph.userData.baseRot = glyph.rotation.z;
+        glyph.renderOrder = 17;
+        portalGroup.add(glyph);
+        archGlyphMeshes.push(glyph);
+      }
+
+      const ruinGlyphMeshes = [];
+
+      const beamGroup = new THREE.Group();
+      beamGroup.position.set(0, 720, -20);
+      group.add(beamGroup);
+
+      const beamTexture = makeBeamTexture();
+      const beamHeight = WORLD_SUN_POSITION.y - (WORLD_ISLAND_POSITION.y + 720) + 12800;
+      const beamCore = new THREE.Mesh(new THREE.PlaneGeometry(520, beamHeight), new THREE.MeshBasicMaterial({
+        map: beamTexture,
+        transparent: true,
+        opacity: 0.62,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending
+      }));
+      beamCore.position.y = beamHeight * 0.5;
+      beamGroup.add(beamCore);
+
+      const beamCross = beamCore.clone();
+      beamCross.material = beamCore.material.clone();
+      beamCross.rotation.y = Math.PI * 0.5;
+      beamGroup.add(beamCross);
+
+      const beamMist = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: createGlowTexture("rgba(245,255,255,0.95)", "rgba(135,210,255,0.18)"),
+        transparent: true,
+        opacity: 0.36,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending
+      }));
+      beamMist.position.y = beamHeight * 0.56;
+      beamMist.scale.set(1320, beamHeight * 1.18, 1);
+      beamGroup.add(beamMist);
+
+      const beamParticlePositions = new Float32Array(BEAM_SPIRAL_PARTICLE_COUNT * 3);
+      const beamParticleColors = new Float32Array(BEAM_SPIRAL_PARTICLE_COUNT * 3);
+      const beamParticlePhases = new Float32Array(BEAM_SPIRAL_PARTICLE_COUNT);
+      const beamParticleRadii = new Float32Array(BEAM_SPIRAL_PARTICLE_COUNT);
+      const beamParticleSpeeds = new Float32Array(BEAM_SPIRAL_PARTICLE_COUNT);
+      const beamParticleDirections = new Float32Array(BEAM_SPIRAL_PARTICLE_COUNT);
+      const beamParticleHeights = new Float32Array(BEAM_SPIRAL_PARTICLE_COUNT);
+      const beamPalette = [
+        new THREE.Color(0x86ddff),
+        new THREE.Color(0xc69aff),
+        new THREE.Color(0xff8fd8),
+        new THREE.Color(0x76ffd2),
+        new THREE.Color(0x8aa7ff)
+      ];
+
+      for (let i = 0; i < BEAM_SPIRAL_PARTICLE_COUNT; i++) {
+        const color = beamPalette[i % beamPalette.length];
+        beamParticleColors[i * 3] = color.r;
+        beamParticleColors[i * 3 + 1] = color.g;
+        beamParticleColors[i * 3 + 2] = color.b;
+        beamParticlePhases[i] = randomBetween(0, Math.PI * 2);
+        beamParticleRadii[i] = randomBetween(190, 520);
+        beamParticleSpeeds[i] = randomBetween(0.18, 0.58);
+        beamParticleDirections[i] = Math.random() < 0.5 ? -1 : 1;
+        beamParticleHeights[i] = randomBetween(60, beamHeight - 60);
+      }
+
+      const beamParticleGeometry = new THREE.BufferGeometry();
+      beamParticleGeometry.setAttribute("position", new THREE.BufferAttribute(beamParticlePositions, 3));
+      beamParticleGeometry.setAttribute("color", new THREE.BufferAttribute(beamParticleColors, 3));
+      const beamParticles = new THREE.Points(
+        beamParticleGeometry,
+        new THREE.PointsMaterial({
+          size: 24,
+          sizeAttenuation: true,
+          transparent: true,
+          opacity: 0.58,
+          depthWrite: false,
+          vertexColors: true,
+          blending: THREE.AdditiveBlending
+        })
+      );
+      beamParticles.frustumCulled = false;
+      beamParticles.visible = false;
+
+      return {
+        group,
+        portalGroup,
+        portalRing,
+        portalOuterHalo,
+        portalCore,
+        portalGlow,
+        runeMeshes,
+        archGlyphMeshes,
+        ruinGlyphMeshes,
+        beamGroup,
+        beamCore,
+        beamCross,
+        beamMist,
+        beamParticles,
+        beamParticleGeometry,
+        beamParticlePositions,
+        beamParticlePhases,
+        beamParticleRadii,
+        beamParticleSpeeds,
+        beamParticleDirections,
+        beamParticleHeights,
+        beamHeight
+      };
+    }
+
+    const landmark = createIslandLandmark();
+
+    function createAlignedTetrahedronGeometry(size) {
+      const topY = size;
+      const baseY = -size * 0.34;
+      const baseRadius = size * 0.96;
+      const positions = new Float32Array([
+        0, topY, 0,
+        baseRadius, baseY, 0,
+        -baseRadius * 0.5, baseY, baseRadius * 0.8660254,
+        -baseRadius * 0.5, baseY, -baseRadius * 0.8660254
+      ]);
+      const indices = [
+        0, 1, 2,
+        0, 2, 3,
+        0, 3, 1,
+        1, 3, 2
+      ];
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    }
+
+    function createStarTetrahedron() {
+      const group = new THREE.Group();
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.96,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+      });
+      const wireMaterial = new THREE.MeshBasicMaterial({
+        color: 0xcff5ff,
+        transparent: true,
+        opacity: 0.50,
+        wireframe: true,
+        depthWrite: false,
+        depthTest: false,
+        blending: THREE.AdditiveBlending
+      });
+      const tetraGeometry = createAlignedTetrahedronGeometry(330);
+      const tetraWireGeometry = createAlignedTetrahedronGeometry(374);
+      const tetraA = new THREE.Mesh(tetraGeometry, material);
+      const tetraB = new THREE.Mesh(tetraGeometry.clone(), material.clone());
+      tetraB.rotation.set(Math.PI, 0, 0);
+
+      const wireA = new THREE.Mesh(tetraWireGeometry, wireMaterial);
+      const wireB = new THREE.Mesh(tetraWireGeometry.clone(), wireMaterial.clone());
+      wireB.rotation.set(Math.PI, 0, 0);
+
+      const starGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: createGlowTexture("rgba(255,255,255,0.98)", "rgba(175,220,255,0.28)"),
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        opacity: 0.42,
+        blending: THREE.AdditiveBlending
+      }));
+      starGlow.scale.set(920, 920, 1);
+      starGlow.renderOrder = 28;
+
+      [tetraA, tetraB, wireA, wireB].forEach((mesh, index) => {
+        mesh.renderOrder = 30 + index;
+      });
+
+      group.add(starGlow, tetraA, tetraB, wireA, wireB);
+      group.userData.glow = starGlow;
+      group.userData.clickables = [tetraA, tetraB, wireA, wireB];
+      group.renderOrder = 30;
+      return group;
+    }
+
+    function createPortalWorld() {
+      const group = new THREE.Group();
+      group.visible = false;
+      scene.add(group);
+
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(100000, 28, 20), new THREE.MeshBasicMaterial({
+        color: 0x03040a,
+        side: THREE.BackSide,
+        depthWrite: false
+      }));
+      group.add(dome);
+
+      const coreGroup = new THREE.Group();
+      group.add(coreGroup);
+
+      const coreSphere = new THREE.Mesh(new THREE.SphereGeometry(560, 32, 20), new THREE.MeshBasicMaterial({
+        color: 0x020205,
+        transparent: true,
+        opacity: 1
+      }));
+      coreGroup.add(coreSphere);
+
+      const ringA = new THREE.Mesh(new THREE.TorusGeometry(950, 72, 18, 86), new THREE.MeshBasicMaterial({
+        color: 0xff6a32,
+        transparent: true,
+        opacity: 0.28,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }));
+      ringA.rotation.x = Math.PI * 0.5;
+      coreGroup.add(ringA);
+
+      const ringB = new THREE.Mesh(new THREE.TorusGeometry(1260, 46, 18, 84), new THREE.MeshBasicMaterial({
+        color: 0xff4f9c,
+        transparent: true,
+        opacity: 0.23,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }));
+      ringB.rotation.y = Math.PI * 0.5;
+      ringB.rotation.z = 0.35;
+      coreGroup.add(ringB);
+
+      const ringC = new THREE.Mesh(new THREE.TorusGeometry(1580, 32, 18, 96), new THREE.MeshBasicMaterial({
+        color: 0xffbd62,
+        transparent: true,
+        opacity: 0.17,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      }));
+      ringC.rotation.set(0.65, 0.42, 0.25);
+      coreGroup.add(ringC);
+
+      const coreGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: createGlowTexture("rgba(255,236,210,0.98)", "rgba(255,92,130,0.26)"),
+        transparent: true,
+        depthWrite: false,
+        depthTest: false,
+        opacity: 0.32,
+        blending: THREE.AdditiveBlending
+      }));
+      coreGlow.scale.set(3000, 3000, 1);
+      coreGlow.position.z = -20;
+      coreGroup.add(coreGlow);
+
+      const starTetrahedron = createStarTetrahedron();
+      starTetrahedron.position.z = -120;
+      coreGroup.add(starTetrahedron);
+
+      const portalPositions = new Float32Array(PORTAL_PARTICLE_COUNT * 3);
+      const portalDrift = new Float32Array(PORTAL_PARTICLE_COUNT);
+      for (let i = 0; i < PORTAL_PARTICLE_COUNT; i++) {
+        const index = i * 3;
+        portalPositions[index] = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        portalPositions[index + 1] = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        portalPositions[index + 2] = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        portalDrift[i] = randomBetween(0.35, 1.5);
+      }
+
+      const particleGeometry = new THREE.BufferGeometry();
+      particleGeometry.setAttribute("position", new THREE.BufferAttribute(portalPositions, 3));
+      const particleMaterial = new THREE.PointsMaterial({
+        color: 0xdaf3ff,
+        size: 16,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.42,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      });
+      const particles = new THREE.Points(particleGeometry, particleMaterial);
+      particles.frustumCulled = false;
+      group.add(particles);
+
+      const warpStarPositions = new Float32Array(PORTAL_WARP_STAR_COUNT * 3);
+      const warpStarColors = new Float32Array(PORTAL_WARP_STAR_COUNT * 3);
+      const warpStarDrift = new Float32Array(PORTAL_WARP_STAR_COUNT);
+      const warpPalette = [
+        new THREE.Color(0xffffff),
+        new THREE.Color(0xffd3e8),
+        new THREE.Color(0xffa06f),
+        new THREE.Color(0xffefb2),
+        new THREE.Color(0xff6f9f)
+      ];
+
+      for (let i = 0; i < PORTAL_WARP_STAR_COUNT; i++) {
+        const index = i * 3;
+        warpStarPositions[index] = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        warpStarPositions[index + 1] = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        warpStarPositions[index + 2] = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        warpStarDrift[i] = randomBetween(0.7, 2.6);
+        const color = warpPalette[i % warpPalette.length];
+        warpStarColors[index] = color.r;
+        warpStarColors[index + 1] = color.g;
+        warpStarColors[index + 2] = color.b;
+      }
+
+      const warpStarGeometry = new THREE.BufferGeometry();
+      warpStarGeometry.setAttribute("position", new THREE.BufferAttribute(warpStarPositions, 3));
+      warpStarGeometry.setAttribute("color", new THREE.BufferAttribute(warpStarColors, 3));
+      const warpStarMaterial = new THREE.PointsMaterial({
+        size: 18,
+        sizeAttenuation: true,
+        transparent: true,
+        opacity: 0.62,
+        depthWrite: false,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending
+      });
+      const warpStars = new THREE.Points(warpStarGeometry, warpStarMaterial);
+      warpStars.frustumCulled = false;
+      group.add(warpStars);
+
+      const warpStreakPositions = new Float32Array(PORTAL_WARP_STREAK_COUNT * 6);
+      const warpStreakColors = new Float32Array(PORTAL_WARP_STREAK_COUNT * 6);
+      const warpStreakDrift = new Float32Array(PORTAL_WARP_STREAK_COUNT);
+      for (let i = 0; i < PORTAL_WARP_STREAK_COUNT; i++) {
+        const index = i * 6;
+        const color = warpPalette[(i + 2) % warpPalette.length];
+        const x = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        const y = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        const z = randomBetween(-PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        warpStreakPositions[index] = x;
+        warpStreakPositions[index + 1] = y;
+        warpStreakPositions[index + 2] = z;
+        warpStreakPositions[index + 3] = x;
+        warpStreakPositions[index + 4] = y;
+        warpStreakPositions[index + 5] = z + 480;
+        warpStreakDrift[i] = randomBetween(0.7, 2.4);
+        warpStreakColors[index] = color.r;
+        warpStreakColors[index + 1] = color.g;
+        warpStreakColors[index + 2] = color.b;
+        warpStreakColors[index + 3] = color.r;
+        warpStreakColors[index + 4] = color.g;
+        warpStreakColors[index + 5] = color.b;
+      }
+
+      const warpStreakGeometry = new THREE.BufferGeometry();
+      warpStreakGeometry.setAttribute("position", new THREE.BufferAttribute(warpStreakPositions, 3));
+      warpStreakGeometry.setAttribute("color", new THREE.BufferAttribute(warpStreakColors, 3));
+      const warpStreakMaterial = new THREE.LineBasicMaterial({
+        transparent: true,
+        opacity: 0.08,
+        depthWrite: false,
+        vertexColors: true,
+        blending: THREE.AdditiveBlending
+      });
+      const warpStreaks = new THREE.LineSegments(warpStreakGeometry, warpStreakMaterial);
+      warpStreaks.frustumCulled = false;
+      group.add(warpStreaks);
+
+      const orbTexture = createGlowTexture("rgba(255,255,255,0.98)", "rgba(150,200,255,0.28)");
+      const orbs = [];
+      for (let i = 0; i < PORTAL_ORB_COUNT; i++) {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: orbTexture,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false,
+          opacity: 0.55,
+          blending: THREE.AdditiveBlending
+        }));
+        sprite.renderOrder = 12;
+        group.add(sprite);
+        orbs.push({
+          sprite,
+          radius: randomBetween(1600, 7200),
+          depth: randomBetween(4200, 11800),
+          height: randomBetween(-3200, 3600),
+          phase: randomBetween(0, Math.PI * 2),
+          speed: randomBetween(0.10, 0.44),
+          scale: randomBetween(46, 190),
+          wobble: randomBetween(140, 620)
+        });
+      }
+
+      return {
+        group,
+        dome,
+        coreGroup,
+        coreSphere,
+        ringA,
+        ringB,
+        ringC,
+        coreGlow,
+        starTetrahedron,
+        particles,
+        particleGeometry,
+        particleMaterial,
+        portalPositions,
+        portalDrift,
+        warpStars,
+        warpStarGeometry,
+        warpStarMaterial,
+        warpStarPositions,
+        warpStarDrift,
+        warpStreaks,
+        warpStreakGeometry,
+        warpStreakMaterial,
+        warpStreakPositions,
+        warpStreakDrift,
+        orbs
+      };
+    }
+
+    const portalWorld = createPortalWorld();
+
+    const oceanGeometry = new THREE.PlaneGeometry(52000, 52000, 260, 260);
+    oceanGeometry.rotateX(-Math.PI / 2);
+    const waterUniforms = {
+      uTime: { value: 0 },
+      uOrigin: { value: new THREE.Vector2(0, 0) },
+      uSunPosition: { value: sunPosition.clone() },
+      uDeep: { value: BASE_WATER_DEEP.clone() },
+      uMid: { value: BASE_WATER_MID.clone() },
+      uShallow: { value: BASE_WATER_SHALLOW.clone() },
+      uMist: { value: BASE_WATER_MIST.clone() },
+      uUnderwater: { value: 0 },
+      uUnderwaterDepth: { value: 0 },
+      uWaveScale: { value: WAVE_SCALE },
+      uWaveSpacing: { value: WAVE_SPACING }
+    };
+
+    const waterMaterial = new THREE.ShaderMaterial({
+      uniforms: waterUniforms,
+      side: THREE.DoubleSide,
+      fog: false,
+      vertexShader: `
+        uniform float uTime;
+        uniform vec2 uOrigin;
+        uniform float uWaveScale;
+        uniform float uWaveSpacing;
+        varying vec3 vWorldPos;
+        varying vec3 vNormalW;
+        varying float vDistFade;
+        varying vec2 vSurfaceCoord;
+        varying float vWaveMask;
+        const float PHI = 1.61803398875;
+        const float SQ2 = 1.41421356237;
+        const float SQ3 = 1.73205080757;
+        float hash21(vec2 p) {
+          p = fract(p * vec2(234.34, 435.345));
+          p += dot(p, p + 34.23);
+          return fract(p.x * p.y);
+        }
+        float valueNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          float a = hash21(i);
+          float b = hash21(i + vec2(1.0, 0.0));
+          float c = hash21(i + vec2(0.0, 1.0));
+          float d = hash21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float a = 0.5;
+          mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+          for (int i = 0; i < 5; i++) {
+            v += (valueNoise(p) * 2.0 - 1.0) * a;
+            p = m * p;
+            a *= 0.52;
+          }
+          return v;
+        }
+        float oceanHeight(vec2 worldP, float t) {
+          vec2 p = worldP / uWaveSpacing;
+          vec2 warpA = vec2(fbm(p * 0.0017 + vec2(t * 0.028, -t * 0.022)), fbm(p * 0.0019 + vec2(-t * 0.020, t * 0.024)));
+          vec2 warpB = vec2(sin(p.y * 0.00125 + t * 0.44 + PHI) * 42.0, cos(p.x * 0.00115 - t * 0.38 + SQ2) * 36.0);
+          vec2 warpC = vec2(sin((p.x + p.y * SQ3) * 0.00092 + t * 0.31) * 28.0, cos((p.y - p.x * PHI) * 0.00106 - t * 0.27) * 24.0);
+          vec2 q = p + warpA * 165.0 + warpB + warpC;
+          float swellA = sin(q.x * 0.0036 + q.y * 0.0122 + t * 0.72) * 12.8;
+          float swellB = sin(q.x * 0.0068 - q.y * 0.0051 + t * 0.51 + 1.57) * 9.8;
+          float swellC = sin((q.x + q.y * PHI) * 0.00175 + t * 0.29 + 2.42) * 12.2;
+          float swellD = sin((q.x * 0.58 - q.y * 1.31) * 0.0049 - t * 0.42 + 0.84) * 8.1;
+          float breakupA = fbm(q * 0.0025 + vec2(t * 0.040, -t * 0.028)) * 4.8;
+          float breakupB = fbm(q * 0.0062 + vec2(-t * 0.083, t * 0.061)) * 3.2;
+          float chopA = fbm(q * 0.0115 + vec2(t * 0.120, -t * 0.090)) * 2.2;
+          float chopB = sin((q.x - q.y) * 0.0105 + t * 0.95) * 1.5;
+          float chopC = sin((q.x * PHI + q.y * SQ2) * 0.0072 - t * 0.67) * 1.1;
+          float baseWave = swellA + swellB + swellC + swellD + breakupA + breakupB + chopA + chopB + chopC;
+          return (baseWave < 0.0 ? baseWave * 1.92 : baseWave * 1.34) * uWaveScale;
+        }
+        vec3 displaced(vec3 pos) {
+          vec2 worldXZ = pos.xz + uOrigin;
+          return vec3(pos.x, oceanHeight(worldXZ, uTime), pos.z);
+        }
+        void main() {
+          vec3 p = displaced(position);
+          float e = 18.0;
+          vec3 px = displaced(position + vec3(e, 0.0, 0.0));
+          vec3 pz = displaced(position + vec3(0.0, 0.0, e));
+          vec3 n = normalize(cross(pz - p, px - p));
+          vec4 worldPos = modelMatrix * vec4(p, 1.0);
+          vWorldPos = worldPos.xyz;
+          vNormalW = normalize(mat3(modelMatrix) * n);
+          vDistFade = clamp(distance(cameraPosition.xz, worldPos.xz) / 52000.0, 0.0, 1.0);
+          vSurfaceCoord = worldPos.xz / uWaveSpacing;
+          vWaveMask = clamp(1.0 - n.y, 0.0, 1.0);
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uSunPosition;
+        uniform vec3 uDeep;
+        uniform vec3 uMid;
+        uniform vec3 uShallow;
+        uniform vec3 uMist;
+        uniform float uTime;
+        uniform float uUnderwater;
+        uniform float uUnderwaterDepth;
+        varying vec3 vWorldPos;
+        varying vec3 vNormalW;
+        varying float vDistFade;
+        varying vec2 vSurfaceCoord;
+        varying float vWaveMask;
+        const float PHI = 1.61803398875;
+        const float SQ2 = 1.41421356237;
+        float hash21(vec2 p) {
+          p = fract(p * vec2(234.34, 435.345));
+          p += dot(p, p + 34.23);
+          return fract(p.x * p.y);
+        }
+        float valueNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          float a = hash21(i);
+          float b = hash21(i + vec2(1.0, 0.0));
+          float c = hash21(i + vec2(0.0, 1.0));
+          float d = hash21(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float a = 0.5;
+          mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+          for (int i = 0; i < 4; i++) {
+            v += (valueNoise(p) * 2.0 - 1.0) * a;
+            p = m * p;
+            a *= 0.52;
+          }
+          return v;
+        }
+        void main() {
+          vec3 N = normalize(vNormalW);
+          vec2 p = vSurfaceCoord;
+          float t = uTime;
+
+          vec2 microWarp = vec2(
+            fbm(p * 0.086 + vec2(t * 0.10, -t * 0.07)),
+            fbm(p * 0.118 + vec2(-t * 0.13, t * 0.09) + vec2(PHI, SQ2))
+          );
+          float microA = fbm((p + microWarp * 10.0) * 0.34 + vec2(t * 0.26, -t * 0.19));
+          float microB = fbm((p - microWarp * 13.0) * 0.46 + vec2(-t * 0.31, t * 0.23));
+          vec3 microNormal = normalize(N + vec3((microA - 0.5) * 0.13, 0.0, (microB - 0.5) * 0.13) * (1.0 - vDistFade * 0.52));
+          N = normalize(mix(N, microNormal, 0.58));
+
+          vec3 V = normalize(cameraPosition - vWorldPos);
+          vec3 L = normalize(uSunPosition - vWorldPos);
+          vec3 R = reflect(-L, N);
+          vec3 H = normalize(V + L);
+          vec3 surfaceColor = mix(uShallow, uMid, smoothstep(0.0, 0.30, vDistFade));
+          surfaceColor = mix(surfaceColor, uDeep, smoothstep(0.30, 1.0, vDistFade));
+          float crest = smoothstep(0.045, 0.19, vWaveMask) * (1.0 - smoothstep(0.18, 0.92, vDistFade));
+          float lace = smoothstep(0.50, 0.88, fbm((p + microWarp * 18.0) * 0.18 + vec2(t * 0.18, -t * 0.14))) * crest;
+          surfaceColor = mix(surfaceColor, vec3(0.76, 0.93, 1.0), crest * 0.075 + lace * 0.15);
+          surfaceColor *= max(dot(N, L), 0.0) * 0.22 + 0.78;
+          float fresnel = pow(1.0 - max(dot(N, V), 0.0), 4.5);
+          float broadSpec = pow(max(dot(R, V), 0.0), 26.0);
+          float sharpSpec = pow(max(dot(H, N), 0.0), 120.0);
+          vec2 shimmerWarp = vec2(fbm(p * 0.064 + vec2(t * 0.13, -t * 0.08)), fbm(p * 0.093 + vec2(-t * 0.18, t * 0.11) + vec2(PHI, SQ2)));
+          float glintFieldA = fbm((p + shimmerWarp * 16.0) * 0.082 + vec2(t * 0.17, -t * 0.11));
+          float glintFieldB = fbm((p - shimmerWarp * 22.0) * 0.127 + vec2(-t * 0.23, t * 0.15));
+          float glintFieldC = fbm((p + vec2(glintFieldA, glintFieldB) * 26.0) * 0.205 + vec2(t * 0.31, -t * 0.24));
+          float softMask = smoothstep(0.34, 0.86, glintFieldA * 0.46 + glintFieldB * 0.34 + glintFieldC * 0.20);
+          float tightMask = smoothstep(0.61, 0.93, glintFieldB * 0.52 + glintFieldC * 0.48);
+          float reflectionFacing = clamp(dot(reflect(-L, N), V), 0.0, 1.0);
+          float horizonFacing = clamp(1.0 - abs(dot(N, vec3(0.0, 1.0, 0.0))), 0.0, 1.0);
+          float slopeBoost = mix(0.78, 1.26, vWaveMask);
+          float glint = (pow(reflectionFacing, 10.0) * (0.20 + softMask * 0.45) + pow(reflectionFacing, 24.0) * (0.12 + softMask * 0.35) + pow(reflectionFacing, 54.0) * tightMask * 0.55) * slopeBoost;
+          vec3 airColor = surfaceColor;
+          airColor += vec3(1.0, 0.98, 0.94) * broadSpec * 0.45;
+          airColor += vec3(1.0, 0.985, 0.95) * sharpSpec * 0.20;
+          airColor += vec3(1.0, 0.98, 0.95) * glint * (0.48 + horizonFacing * 0.34);
+          airColor += vec3(0.90, 0.96, 1.0) * fresnel * 0.18;
+          airColor += vec3(0.72, 0.90, 1.0) * lace * 0.08;
+          airColor = mix(airColor, uMist, smoothstep(0.55, 1.0, vDistFade) * 0.34);
+          vec3 underwaterBase = mix(vec3(0.03, 0.16, 0.18), vec3(0.12, 0.42, 0.46), 1.0 - vDistFade * 0.6);
+          float underwaterSpec = pow(max(dot(R, V), 0.0), 18.0);
+          float underwaterFresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+          float upGlow = pow(max(dot(normalize(V), normalize(vec3(0.0, 1.0, 0.0))), 0.0), 2.0);
+          vec3 underwaterColor = underwaterBase;
+          underwaterColor += vec3(0.76, 0.94, 1.0) * underwaterSpec * (0.84 - uUnderwaterDepth * 0.14);
+          underwaterColor += vec3(0.28, 0.68, 0.76) * underwaterFresnel * 0.20;
+          underwaterColor += vec3(0.52, 0.86, 0.92) * upGlow * 0.22;
+          gl_FragColor = vec4(mix(airColor, underwaterColor, uUnderwater), 1.0);
+        }
+      `
+    });
+    const ocean = new THREE.Mesh(oceanGeometry, waterMaterial);
+    scene.add(ocean);
+
+    const TOTAL_PARTICLE_COUNT = 6800;
+    const ABOVE_WATER_PARTICLE_COUNT = 3400;
+    const UNDERWATER_PARTICLE_COUNT = 6800;
+    const PARTICLE_RANGE_X = 2100;
+    const PARTICLE_RANGE_Y = 1500;
+    const PARTICLE_RANGE_Z_FRONT = 3000;
+    const PARTICLE_RANGE_Z_BACK = 900;
+    const particlePositions = new Float32Array(TOTAL_PARTICLE_COUNT * 3);
+    const particleDrift = new Float32Array(TOTAL_PARTICLE_COUNT);
+
+    function resetParticle(i) {
+      const index = i * 3;
+      particlePositions[index] = randomBetween(-PARTICLE_RANGE_X, PARTICLE_RANGE_X);
+      particlePositions[index + 1] = randomBetween(-PARTICLE_RANGE_Y * 0.8, PARTICLE_RANGE_Y);
+      particlePositions[index + 2] = randomBetween(-PARTICLE_RANGE_Z_BACK, PARTICLE_RANGE_Z_FRONT);
+      particleDrift[i] = randomBetween(0.5, 1.6);
+    }
+
+    for (let i = 0; i < TOTAL_PARTICLE_COUNT; i++) resetParticle(i);
+    const particleGeometry = new THREE.BufferGeometry();
+    particleGeometry.setAttribute("position", new THREE.BufferAttribute(particlePositions, 3));
+    particleGeometry.setDrawRange(0, ABOVE_WATER_PARTICLE_COUNT);
+    const particleMaterial = new THREE.PointsMaterial({
+      color: 0xe9fbff,
+      size: 5.0,
+      sizeAttenuation: true,
+      transparent: true,
+      opacity: 0.11,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+    particleSystem.frustumCulled = false;
+    scene.add(particleSystem);
+
+    function enterSunPortal() {
+      if (state.portal.active || state.portal.exitCooldown > 0) return;
+      state.portal.active = true;
+      state.underwater = false;
+      state.portal.targetYaw = 0;
+      state.portal.targetPitch = 0;
+      state.portal.yaw = 0;
+      state.portal.pitch = 0;
+    }
+
+    function leaveSunPortal() {
+      if (!state.portal.active) return;
+      state.portal.active = false;
+      state.portal.exitCooldown = 3.0;
+      state.flight.x = WORLD_SUN_POSITION.x;
+      state.flight.y = 430;
+      state.flight.z = WORLD_SUN_POSITION.z - 2300;
+      state.flight.vx = 0;
+      state.flight.vy = 0;
+      state.flight.vz = -260;
+      state.portal.targetYaw = 0;
+      state.portal.targetPitch = 0;
+    }
+
+    function updatePortalTrigger() {
+      if (state.portal.active || state.portal.exitCooldown > 0) return;
+      if (camera.position.distanceTo(WORLD_SUN_POSITION) <= SUN_PORTAL_RADIUS) enterSunPortal();
+    }
+
+    function updateSun() {
+      sunPosition.copy(WORLD_SUN_POSITION);
+      skyMaterial.uniforms.uSunPosition.value.copy(sunPosition);
+      waterUniforms.uSunPosition.value.copy(sunPosition);
+      dirLight.position.copy(sunPosition);
+      underLight.position.copy(sunPosition);
+      sunSprite.position.copy(sunPosition);
+      mainRing.points.position.copy(sunPosition);
+      outerRing.points.position.copy(sunPosition);
+    }
+
+    function updateSceneMusicResponse() {
+      if (state.portal.active) return;
+      const sunPulse = 1 + audioState.kick * 0.04 + responseState.bloom * 0.06 + Math.sin(state.waveClock * (0.36 + responseState.flow * 0.12)) * (0.012 + responseState.shimmer * 0.008);
+      const sunScale = 2200 * sunPulse;
+      sunSprite.scale.set(sunScale, sunScale, 1);
+      sunSprite.material.opacity = 0.92 + responseState.shimmer * 0.04 + responseState.bloom * 0.04;
+      sunSprite.material.rotation = Math.sin(state.waveClock * 0.18) * 0.018;
+      skyMaterial.uniforms.uTop.value.copy(BASE_SKY_TOP);
+      skyMaterial.uniforms.uMid.value.copy(BASE_SKY_MID);
+      skyMaterial.uniforms.uBottom.value.copy(BASE_SKY_BOTTOM);
+      waterUniforms.uDeep.value.copy(BASE_WATER_DEEP);
+      waterUniforms.uMid.value.copy(BASE_WATER_MID);
+      waterUniforms.uShallow.value.copy(BASE_WATER_SHALLOW);
+      waterUniforms.uMist.value.copy(BASE_WATER_MIST);
+      if (!state.underwater) {
+        dirLight.intensity = 2.10 + responseState.bloom * 0.22 + responseState.shimmer * 0.05;
+        hemiLight.intensity = 1.0 + responseState.flow * 0.05;
+        scene.fog.color.set(0xc7d8e7);
+        scene.fog.near = 9000;
+        scene.fog.far = 56000;
+      }
+    }
+
+    function updateRingInteraction(dt) {
+      state.ring.touchEnergy *= Math.exp(-dt * 3.3);
+      state.ring.touchPulse *= Math.exp(-dt * 4.4);
+      state.ring.autoSpinX += dt * (0.085 + responseState.ring * 0.06 + responseState.shimmer * 0.012);
+      if (!state.ring.dragActive) {
+        state.ring.targetOffsetX *= Math.exp(-dt * 10.5);
+        state.ring.targetOffsetY *= Math.exp(-dt * 10.0);
+        state.ring.targetOffsetZ *= Math.exp(-dt * 11.0);
+      }
+      state.ring.targetOffsetX = clamp(state.ring.targetOffsetX, -0.35, 0.35);
+      state.ring.targetOffsetY = clamp(state.ring.targetOffsetY, -0.16, 0.16);
+      state.ring.targetOffsetZ = clamp(state.ring.targetOffsetZ, -0.14, 0.14);
+      state.ring.offsetX = THREE.MathUtils.lerp(state.ring.offsetX, state.ring.targetOffsetX, Math.min(1, dt * 10.5));
+      state.ring.offsetY = THREE.MathUtils.lerp(state.ring.offsetY, state.ring.targetOffsetY, Math.min(1, dt * 10.0));
+      state.ring.offsetZ = THREE.MathUtils.lerp(state.ring.offsetZ, state.ring.targetOffsetZ, Math.min(1, dt * 11.0));
+      mainRing.points.rotation.set(state.ring.autoSpinX + state.ring.offsetX, -0.12 + state.ring.offsetY, 0.10 + state.ring.offsetZ);
+      outerRing.points.rotation.set(
+        -state.ring.autoSpinX * 0.46 + state.ring.offsetX * 0.12,
+        -0.215 + state.ring.offsetY * 0.28,
+        0.035 + state.ring.offsetZ * 0.24
+      );
+    }
+
+    function updateRingSystem(ringSystem, options) {
+      const touchBoost = state.ring.touchEnergy * options.touchGain;
+      const touchPulse = state.ring.touchPulse;
+      const musicalBody = responseState.ring * 0.92 + responseState.flow * 0.28;
+      const bassPulse = 1 + musicalBody * options.bassGain + touchBoost * 0.16;
+      const shimmer = 1 + responseState.shimmer * options.highGain + touchBoost * 0.18;
+      const time = state.waveClock * 0.24;
+      const positions = ringSystem.geometry.attributes.position.array;
+
+      for (let i = 0; i < ringSystem.particleCount; i++) {
+        const index = i * 3;
+        const angle = ringSystem.angles[i] + time * (0.035 + ringSystem.scales[i] * 0.018 + responseState.flow * 0.012);
+        const radialWave = Math.sin(time * 2.0 + i * 0.041 + touchPulse * 2.0) * options.radialA + Math.cos(time * 1.32 + i * 0.017 + touchPulse * 1.4) * options.radialB + Math.sin(time * 2.7 + i * 0.014) * (responseState.ring * 14);
+        const depthWave = Math.sin(time * 1.8 + i * 0.025 + touchPulse * 1.2) * options.depthA;
+        const verticalWave = Math.sin(time * 2.2 + i * 0.063 + touchPulse * 1.4) * options.verticalA + Math.cos(time * 1.08 + i * 0.021 + touchPulse) * (options.verticalA * 0.48) + Math.sin(time * 3.0 + i * 0.013) * (responseState.shimmer * 4);
+        const radiusY = (ringSystem.radiusY + ringSystem.radialOffsets[i] + radialWave + touchBoost * 10) * bassPulse;
+        const radiusZ = (ringSystem.radiusZ + ringSystem.radialOffsets[i] * 0.42 + radialWave * 0.46) * bassPulse;
+        positions[index] = ringSystem.depthOffsets[i] + depthWave * shimmer;
+        positions[index + 1] = Math.cos(angle) * radiusY + verticalWave * 0.45;
+        positions[index + 2] = Math.sin(angle) * radiusZ;
+      }
+
+      ringSystem.geometry.attributes.position.needsUpdate = true;
+      ringSystem.points.position.copy(sunPosition);
+      ringSystem.material.opacity = options.opacityBase + responseState.shimmer * options.opacityHigh + state.ring.touchEnergy * options.opacityTouch;
+      ringSystem.material.size = options.sizeBase + (responseState.ring + responseState.flow * 0.4) * options.sizeBass + state.ring.touchEnergy * options.sizeTouch;
+      ringSystem.material.needsUpdate = true;
+    }
+
+    function updateSunRings(dt) {
+      if (state.portal.active) return;
+      updateRingInteraction(dt);
+      updateRingSystem(mainRing, {
+        bassGain: 0.20,
+        highGain: 0.22,
+        touchGain: 1.0,
+        radialA: 18 + responseState.ring * 12 + state.ring.touchEnergy * 17,
+        radialB: 9 + responseState.shimmer * 6 + state.ring.touchEnergy * 6,
+        depthA: 8 + responseState.flow * 5 + state.ring.touchEnergy * 7,
+        verticalA: 6 + responseState.shimmer * 4 + state.ring.touchEnergy * 7,
+        sizeBase: 18,
+        sizeBass: 7,
+        sizeTouch: 4,
+        opacityBase: 0.56,
+        opacityHigh: 0.16,
+        opacityTouch: 0.14
+      });
+      updateRingSystem(outerRing, {
+        bassGain: 0.15,
+        highGain: 0.16,
+        touchGain: 0.52,
+        radialA: 13 + responseState.ring * 8 + state.ring.touchEnergy * 8,
+        radialB: 6 + responseState.shimmer * 6 + state.ring.touchEnergy * 5,
+        depthA: 5 + responseState.flow * 4 + state.ring.touchEnergy * 4,
+        verticalA: 4 + responseState.shimmer * 3 + state.ring.touchEnergy * 5,
+        sizeBase: 10,
+        sizeBass: 4,
+        sizeTouch: 2,
+        opacityBase: 0.28,
+        opacityHigh: 0.10,
+        opacityTouch: 0.06
+      });
+    }
+
+    function updateSkyShips() {
+      if (state.portal.active) return;
+      const time = state.waveClock;
+      const travelParallaxX = state.flight.x * 0.010;
+      const travelParallaxZ = state.flight.z * 0.010;
+      const altitudeFollow = camera.position.y * 0.10;
+      const ambientAltitudeFollow = camera.position.y * 0.08;
+      const horizontalDance = responseState.flow * 1.9 + audioState.kick * 0.7;
+
+      for (let i = 0; i < skyShips.length; i++) {
+        const ship = skyShips[i];
+        const formation = formationDefinitions[ship.formationIndex];
+        const formationWaveX = Math.sin(time * (0.22 + responseState.flow * 0.14) + ship.formationIndex * 1.9 + ship.phase * 0.4) * (1150 + horizontalDance * 780) * ship.strafeBias;
+        const formationWaveY = Math.cos(time * 0.09 + ship.formationIndex * 1.35) * (170 + audioState.kick * 50);
+        const formationWaveZ = Math.sin(time * (0.08 + responseState.flow * 0.02) + ship.formationIndex * 0.95) * (820 + responseState.flow * 120);
+        const localX = Math.sin(time * (0.58 + responseState.flow * 0.18) * ship.localOrbit + ship.phase) * (240 + horizontalDance * 150) * ship.strafeBias;
+        const localY = Math.cos(time * (0.22 + responseState.shimmer * 0.06) * ship.localOrbit + ship.phase * 1.05) * 40;
+        const localZ = Math.sin(time * (0.19 + responseState.flow * 0.04) * ship.localOrbit + ship.phase * 0.72) * 110;
+        const twinkle = 1 + Math.sin(time * (ship.twinkleRate + responseState.shimmer * 2.2) + ship.phase * 1.7) * (ship.twinkleDepth + responseState.shimmer * 0.05);
+        const pulse = 1 + audioState.kick * 0.22 * ship.pulseBias + responseState.flow * 0.20 + responseState.shimmer * 0.14 + Math.sin(time * (0.72 + ship.drift * 0.20) + ship.phase) * 0.08;
+        const finalScale = ship.scale * pulse * twinkle;
+        ship.sprite.position.set(camera.position.x + formation.anchor.x + formationWaveX + ship.slot.x + ship.slotJitter.x + localX - travelParallaxX, formation.anchor.y + altitudeFollow + formationWaveY + ship.slot.y + ship.slotJitter.y + localY, camera.position.z + formation.anchor.z + formationWaveZ + ship.slot.z + ship.slotJitter.z + localZ - travelParallaxZ);
+        ship.sprite.scale.set(finalScale, finalScale, 1);
+        ship.sprite.material.opacity = 0.66 + responseState.shimmer * 0.22 + responseState.flow * 0.12 + pulse * 0.10 + (twinkle - 1) * 0.55;
+        ship.sprite.material.rotation = Math.sin(time * 0.14 + ship.phase) * 0.02;
+      }
+
+      for (let i = 0; i < ambientSkyShips.length; i++) {
+        const ship = ambientSkyShips[i];
+        const driftX = Math.sin(time * (0.26 + ship.drift * 0.08 + responseState.flow * 0.15) + ship.phase) * ship.swayX * (1 + horizontalDance * 0.55) * ship.strafeBias;
+        const driftY = Math.cos(time * (0.06 + ship.drift * 0.04 + responseState.shimmer * 0.03) + ship.phase * 1.2) * ship.swayY;
+        const driftZ = Math.sin(time * (0.05 + ship.drift * 0.03 + responseState.flow * 0.02) + ship.phase * 0.8) * ship.swayZ;
+        const twinkle = 1 + Math.sin(time * (ship.twinkleRate + responseState.shimmer * 3.4) + ship.phase * 1.5) * (ship.twinkleDepth + responseState.shimmer * 0.06);
+        const pulse = 1 + audioState.kick * 0.18 * ship.pulseBias + responseState.flow * 0.10 + responseState.shimmer * 0.14 + Math.sin(time * (0.55 + ship.drift * 0.18) + ship.phase) * 0.08;
+        const finalScale = ship.scale * pulse * twinkle;
+        ship.sprite.position.set(camera.position.x + ship.base.x + driftX - travelParallaxX * 0.82, ship.base.y + ship.lowBias + ambientAltitudeFollow + driftY, camera.position.z + ship.base.z + driftZ - travelParallaxZ * 0.82);
+        ship.sprite.scale.set(finalScale, finalScale, 1);
+        ship.sprite.material.opacity = 0.46 + responseState.shimmer * 0.22 + pulse * 0.10 + (twinkle - 1) * 0.72 + (ship.highBand ? 0.08 : 0);
+        ship.sprite.material.rotation = Math.sin(time * 0.11 + ship.phase) * 0.018;
+      }
+    }
+
+    function updateLandmark(dt) {
+      if (state.portal.active) return;
+      landmark.group.rotation.y = Math.sin(state.waveClock * 0.05) * 0.03;
+      const portalFloat = Math.sin(state.waveClock * 0.32) * 6;
+      landmark.portalGroup.position.y = 250 + portalFloat;
+      landmark.portalRing.material.emissiveIntensity = 0.12 + responseState.ring * 0.25 + responseState.shimmer * 0.06;
+      landmark.portalOuterHalo.material.opacity = 0.16 + responseState.ring * 0.10 + responseState.shimmer * 0.04;
+      landmark.portalCore.material.opacity = 0.16 + responseState.ring * 0.12 + responseState.bloom * 0.05;
+      landmark.portalGlow.material.opacity = 0.34 + responseState.ring * 0.14 + responseState.shimmer * 0.08;
+      landmark.portalGlow.scale.setScalar(650 * (1 + responseState.ring * 0.07 + responseState.bloom * 0.03));
+      landmark.portalGlow.material.rotation += dt * (0.06 + responseState.shimmer * 0.04);
+      landmark.runeMeshes.forEach((rune, index) => {
+        rune.material.opacity = 0.64 + responseState.shimmer * 0.30 + responseState.ring * 0.16;
+        rune.position.z = rune.userData.baseZ + Math.sin(state.waveClock * 0.92 + rune.userData.phase) * 3;
+        rune.rotation.z = rune.userData.baseRot + Math.sin(state.waveClock * 0.4 + index * 0.4) * 0.05;
+      });
+      landmark.archGlyphMeshes.forEach((glyph, index) => {
+        glyph.material.opacity =
+          0.42 +
+          responseState.shimmer * 0.22 +
+          responseState.ring * 0.13 +
+          Math.sin(state.waveClock * 0.52 + glyph.userData.phase) * 0.045;
+        glyph.position.z = glyph.userData.baseZ + Math.sin(state.waveClock * 0.34 + index * 0.5) * 2.2;
+        glyph.rotation.z = glyph.userData.baseRot + Math.sin(state.waveClock * 0.28 + index * 0.27) * 0.018;
+      });
+      landmark.ruinGlyphMeshes.forEach((glyph, index) => {
+        glyph.material.opacity =
+          glyph.userData.baseOpacity +
+          responseState.shimmer * 0.18 +
+          responseState.ring * 0.10 +
+          Math.sin(state.waveClock * 0.46 + glyph.userData.phase) * 0.035;
+        glyph.position.z = glyph.userData.baseZ + Math.sin(state.waveClock * 0.38 + index * 0.7) * 2.6;
+      });
+
+      const beamPulse = 1 + responseState.bloom * 0.22 + responseState.shimmer * 0.12 + audioState.kick * 0.035 + Math.sin(state.waveClock * 0.48) * 0.04;
+      landmark.beamGroup.rotation.y = state.waveClock * 0.045;
+      landmark.beamCore.material.opacity = 0.48 + responseState.shimmer * 0.22 + responseState.bloom * 0.10;
+      landmark.beamCross.material.opacity = 0.40 + responseState.shimmer * 0.18 + responseState.bloom * 0.09;
+      landmark.beamMist.material.opacity = 0.24 + responseState.bloom * 0.12 + responseState.shimmer * 0.08;
+      landmark.beamMist.scale.x = 1320 * beamPulse;
+
+      const beamPositions = landmark.beamParticleGeometry.attributes.position.array;
+      const beamTravel = landmark.beamHeight - 120;
+      for (let i = 0; i < BEAM_SPIRAL_PARTICLE_COUNT; i++) {
+        const index = i * 3;
+        const direction = landmark.beamParticleDirections[i];
+        const yTravel =
+          ((landmark.beamParticleHeights[i] - 60 + state.waveClock * 62 * landmark.beamParticleSpeeds[i] * direction) % beamTravel + beamTravel) %
+          beamTravel;
+        const y = 60 + yTravel;
+        const angle =
+          landmark.beamParticlePhases[i] +
+          state.waveClock * (0.74 + landmark.beamParticleSpeeds[i] * 0.95) * direction +
+          Math.sin(state.waveClock * 0.32 + i * 0.19) * 0.28;
+        const radius =
+          landmark.beamParticleRadii[i] *
+          (1 + responseState.shimmer * 0.10 + responseState.bloom * 0.08 + Math.sin(state.waveClock * 0.55 + i) * 0.045);
+
+        beamPositions[index] = Math.cos(angle) * radius;
+        beamPositions[index + 1] = y;
+        beamPositions[index + 2] = Math.sin(angle) * radius * 0.72;
+      }
+      landmark.beamParticleGeometry.attributes.position.needsUpdate = true;
+      landmark.beamParticles.material.opacity = 0.42 + responseState.shimmer * 0.18 + responseState.bloom * 0.12;
+      landmark.beamParticles.material.size = 18 + responseState.shimmer * 10 + responseState.bloom * 5;
+    }
+
+    function updatePortalWorld(dt) {
+      portalWorld.group.visible = state.portal.active;
+      if (!state.portal.active) return;
+
+      portalWorld.dome.position.copy(camera.position);
+      portalWorld.particles.position.copy(camera.position);
+      portalWorld.warpStars.position.copy(camera.position);
+      portalWorld.warpStars.quaternion.copy(camera.quaternion);
+      portalWorld.warpStreaks.position.copy(camera.position);
+      portalWorld.warpStreaks.quaternion.copy(camera.quaternion);
+      portalWorld.coreGroup.position.set(camera.position.x, camera.position.y + Math.sin(state.waveClock * 0.42) * 90, camera.position.z + 8200);
+      portalWorld.coreGroup.rotation.y += dt * (0.06 + responseState.flow * 0.04);
+
+      portalWorld.coreSphere.scale.setScalar(1 + responseState.bloom * 0.07);
+      const musicDrive = responseState.ring + responseState.flow * 0.55 + responseState.bloom * 0.70 + audioState.kick * 1.15;
+      const ringBreath = Math.sin(state.waveClock * (0.42 + responseState.flow * 0.22)) * (0.018 + responseState.ring * 0.030);
+
+      portalWorld.ringA.rotation.z += dt * (0.40 + responseState.flow * 0.86 + audioState.kick * 1.25);
+      portalWorld.ringA.rotation.y += dt * (0.14 + responseState.shimmer * 0.38 + responseState.bloom * 0.24);
+      portalWorld.ringB.rotation.x -= dt * (0.28 + responseState.flow * 0.62 + audioState.kick * 0.95);
+      portalWorld.ringB.rotation.z -= dt * (0.36 + responseState.shimmer * 0.64 + responseState.bloom * 0.34);
+      portalWorld.ringC.rotation.x += dt * (0.22 + responseState.ring * 0.72 + audioState.kick * 0.86);
+      portalWorld.ringC.rotation.y -= dt * (0.30 + responseState.shimmer * 0.54 + audioState.mid * 0.42);
+      portalWorld.ringC.rotation.z += dt * (0.26 + audioState.kick * 1.05 + responseState.bloom * 0.46);
+
+      portalWorld.ringA.material.opacity = 0.36 + musicDrive * 0.28 + responseState.shimmer * 0.16;
+      portalWorld.ringB.material.opacity = 0.30 + musicDrive * 0.22 + responseState.shimmer * 0.24;
+      portalWorld.ringC.material.opacity = 0.24 + musicDrive * 0.20 + responseState.bloom * 0.18;
+      portalWorld.ringA.scale.setScalar(1 + musicDrive * 0.46 + ringBreath);
+      portalWorld.ringB.scale.setScalar(1 + responseState.flow * 0.48 + audioState.kick * 0.42 + responseState.bloom * 0.24 - ringBreath * 0.6);
+      portalWorld.ringC.scale.setScalar(1 + responseState.shimmer * 0.50 + responseState.bloom * 0.34 + audioState.kick * 0.30 + ringBreath * 0.8);
+      portalWorld.coreGlow.material.opacity = 0.44 + responseState.bloom * 0.42 + responseState.shimmer * 0.22 + audioState.kick * 0.22;
+      portalWorld.coreGlow.scale.setScalar(3800 * (1 + responseState.bloom * 0.26 + audioState.kick * 0.20 + responseState.ring * 0.12));
+
+      portalWorld.starTetrahedron.rotation.x += dt * (0.24 + responseState.flow * 0.18);
+      portalWorld.starTetrahedron.rotation.y += dt * (0.36 + responseState.shimmer * 0.20);
+      portalWorld.starTetrahedron.rotation.z -= dt * (0.18 + audioState.kick * 0.12);
+      const starScale = 1 + responseState.bloom * 0.10 + Math.sin(state.waveClock * 1.2) * 0.035;
+      portalWorld.starTetrahedron.scale.setScalar(starScale);
+      portalWorld.starTetrahedron.children.forEach((child, index) => {
+        if (child.isSprite) {
+          child.material.opacity = 0.42 + responseState.bloom * 0.22 + responseState.shimmer * 0.18;
+          child.scale.setScalar(920 * (1 + responseState.bloom * 0.12 + Math.sin(state.waveClock * 0.9) * 0.025));
+        } else {
+          child.material.opacity = (index < 3 ? 0.76 : 0.58) + responseState.shimmer * 0.24 + responseState.bloom * 0.20;
+        }
+      });
+
+      const positions = portalWorld.particleGeometry.attributes.position.array;
+      const vxFlow = state.flight.vx * dt;
+      const vyFlow = state.flight.vy * dt;
+      const vzFlow = state.flight.vz * dt;
+      const warpSpeed = state.moveEnergy * (260 + responseState.flow * 180 + audioState.kick * 120);
+      for (let i = 0; i < PORTAL_PARTICLE_COUNT; i++) {
+        const index = i * 3;
+        const drift = portalWorld.portalDrift[i];
+        positions[index] -= vxFlow * 0.16;
+        positions[index + 1] -= vyFlow * 0.10;
+        positions[index + 2] -= vzFlow * 0.34;
+        positions[index] += Math.sin(state.waveClock * (0.42 + drift * 0.12) + i * 0.35) * dt * (18 + responseState.flow * 22) * drift;
+        positions[index + 1] += Math.cos(state.waveClock * (0.36 + drift * 0.09) + i * 0.22) * dt * (12 + responseState.shimmer * 16) * drift;
+        positions[index + 2] += Math.sin(state.waveClock * (0.18 + drift * 0.08) + i * 0.16) * dt * (9 + responseState.flow * 10);
+        positions[index + 2] -= dt * warpSpeed * drift;
+        positions[index] = wrapValue(positions[index], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        positions[index + 1] = wrapValue(positions[index + 1], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        positions[index + 2] = wrapValue(positions[index + 2], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+      }
+      portalWorld.particleGeometry.attributes.position.needsUpdate = true;
+      portalWorld.particleMaterial.opacity = 0.34 + responseState.shimmer * 0.24 + responseState.bloom * 0.10 + state.moveEnergy * 0.12;
+      portalWorld.particleMaterial.size = 14 + responseState.shimmer * 8 + state.moveEnergy * 10;
+
+      const warpPositions = portalWorld.warpStarGeometry.attributes.position.array;
+      const warpDirection = state.keys.forward ? -1 : (state.keys.back ? 1 : 0);
+      const warpAmount = Math.abs(warpDirection);
+      const strafeDirection = state.keys.right ? 1 : (state.keys.left ? -1 : 0);
+      const strafeAmount = Math.abs(strafeDirection);
+      const warpRush = warpDirection * (3400 + state.moveEnergy * 6800 + responseState.flow * 1100 + audioState.kick * 800);
+      const sideWarp = state.flight.vx * dt * 1.4 + strafeDirection * dt * (3200 + state.moveEnergy * 3000);
+      const liftWarp = state.flight.vy * dt * 0.8;
+      for (let i = 0; i < PORTAL_WARP_STAR_COUNT; i++) {
+        const index = i * 3;
+        const drift = portalWorld.warpStarDrift[i];
+        warpPositions[index] -= sideWarp * drift;
+        warpPositions[index + 1] -= liftWarp * drift;
+        warpPositions[index + 2] -= dt * warpRush * drift;
+        warpPositions[index] += Math.sin(state.waveClock * 0.28 + i * 0.13) * dt * 18 * drift;
+        warpPositions[index + 1] += Math.cos(state.waveClock * 0.24 + i * 0.17) * dt * 14 * drift;
+        warpPositions[index] = wrapValue(warpPositions[index], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        warpPositions[index + 1] = wrapValue(warpPositions[index + 1], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        warpPositions[index + 2] = wrapValue(warpPositions[index + 2], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+      }
+      portalWorld.warpStarGeometry.attributes.position.needsUpdate = true;
+      portalWorld.warpStarMaterial.opacity = 0.66 + responseState.shimmer * 0.20 + warpAmount * 0.30 + strafeAmount * 0.16 + audioState.kick * 0.10;
+      portalWorld.warpStarMaterial.size = 16 + responseState.shimmer * 7 + warpAmount * 34 + strafeAmount * 12;
+
+      const streakPositions = portalWorld.warpStreakGeometry.attributes.position.array;
+      const streakRush = warpDirection * (7600 + state.moveEnergy * 9400 + responseState.flow * 1700 + audioState.kick * 980);
+      const lateralRush = strafeDirection * (5200 + state.moveEnergy * 5200 + responseState.flow * 900);
+      const trailLength = 560 + warpAmount * (2900 + state.moveEnergy * 1800 + audioState.kick * 480) + strafeAmount * 1500;
+      for (let i = 0; i < PORTAL_WARP_STREAK_COUNT; i++) {
+        const index = i * 6;
+        const drift = portalWorld.warpStreakDrift[i];
+        const sideSway = Math.sin(state.waveClock * 0.24 + i * 0.19) * dt * 24 * drift;
+        const liftSway = Math.cos(state.waveClock * 0.20 + i * 0.23) * dt * 18 * drift;
+        streakPositions[index] -= (sideWarp + lateralRush * dt) * drift + sideSway;
+        streakPositions[index + 1] -= liftWarp * drift + liftSway;
+        streakPositions[index + 2] -= dt * streakRush * drift;
+        streakPositions[index] = wrapValue(streakPositions[index], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        streakPositions[index + 1] = wrapValue(streakPositions[index + 1], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        streakPositions[index + 2] = wrapValue(streakPositions[index + 2], -PORTAL_PARTICLE_RANGE, PORTAL_PARTICLE_RANGE);
+        streakPositions[index + 3] = streakPositions[index];
+        streakPositions[index + 4] = streakPositions[index + 1];
+        streakPositions[index + 5] = streakPositions[index + 2] + trailLength * drift * (warpDirection || 1);
+        streakPositions[index + 3] += trailLength * drift * strafeDirection * 0.36;
+      }
+      portalWorld.warpStreakGeometry.attributes.position.needsUpdate = true;
+      portalWorld.warpStreakMaterial.opacity = 0.05 + warpAmount * 0.50 + strafeAmount * 0.28 + responseState.shimmer * 0.12 + audioState.kick * 0.08;
+
+      for (let i = 0; i < portalWorld.orbs.length; i++) {
+        const orb = portalWorld.orbs[i];
+        const angle = state.waveClock * orb.speed + orb.phase;
+        const lateral = Math.cos(angle) * orb.radius;
+        const vertical = Math.sin(angle * 1.3) * (orb.wobble + responseState.flow * 120);
+        const depth = orb.depth + Math.sin(angle * 0.82) * 420;
+        orb.sprite.position.set(camera.position.x + lateral, camera.position.y + orb.height + vertical, camera.position.z + depth);
+        const pulse = 1 + responseState.shimmer * 0.25 + responseState.flow * 0.12 + Math.sin(state.waveClock * (1.0 + orb.speed) + orb.phase) * 0.16;
+        const scale = orb.scale * pulse;
+        orb.sprite.scale.set(scale, scale, 1);
+        orb.sprite.material.opacity = 0.22 + responseState.shimmer * 0.30 + responseState.bloom * 0.12 + Math.sin(state.waveClock * (1.2 + orb.speed) + orb.phase) * 0.10;
+        orb.sprite.material.rotation = Math.sin(state.waveClock * 0.22 + orb.phase) * 0.08;
+      }
+    }
+
+    function getHeldSpeed(holdTime) {
+      const ramp = 1 - Math.exp(-holdTime * AXIS_ACCEL_CURVE);
+      return AXIS_BASE_SPEED + (AXIS_MAX_SPEED - AXIS_BASE_SPEED) * saturate(ramp);
+    }
+
+    function updateHoldTimer(dt, input, posKey, negKey) {
+      if (input > 0) {
+        state.holds[posKey] += dt;
+        state.holds[negKey] = 0;
+      } else if (input < 0) {
+        state.holds[negKey] += dt;
+        state.holds[posKey] = 0;
+      } else {
+        state.holds[posKey] = 0;
+        state.holds[negKey] = 0;
+      }
+    }
+
+    function axisTargetSpeed(input, posKey, negKey, multiplier = 1) {
+      if (input > 0) return getHeldSpeed(state.holds[posKey]) * multiplier;
+      if (input < 0) return -getHeldSpeed(state.holds[negKey]) * multiplier;
+      return 0;
+    }
+
+    function updateFlight(dt) {
+      const strafeInput = (state.keys.right ? 1 : 0) - (state.keys.left ? 1 : 0);
+      const forwardInput = (state.keys.forward ? 1 : 0) - (state.keys.back ? 1 : 0);
+      const altitudeInput = (state.keys.up ? 1 : 0) - (state.keys.down ? 1 : 0);
+      updateHoldTimer(dt, strafeInput, "xPos", "xNeg");
+      updateHoldTimer(dt, altitudeInput, "yPos", "yNeg");
+      updateHoldTimer(dt, forwardInput, "zPos", "zNeg");
+      state.flight.targetVx = axisTargetSpeed(strafeInput, "xPos", "xNeg", STRAFE_SPEED_MULTIPLIER);
+      state.flight.targetVy = axisTargetSpeed(altitudeInput, "yPos", "yNeg", 1);
+      state.flight.targetVz = axisTargetSpeed(forwardInput, "zPos", "zNeg", FORWARD_SPEED_MULTIPLIER);
+
+      if (state.portal.active) {
+        const forwardSpeed = state.flight.targetVz;
+        const strafeSpeed = state.flight.targetVx;
+        const yawSin = Math.sin(state.portal.yaw);
+        const yawCos = Math.cos(state.portal.yaw);
+        state.flight.targetVx = yawSin * forwardSpeed + yawCos * strafeSpeed;
+        state.flight.targetVz = yawCos * forwardSpeed - yawSin * strafeSpeed;
+      }
+
+      state.flight.vx = THREE.MathUtils.lerp(state.flight.vx, state.flight.targetVx, Math.min(1, dt * 3.6));
+      state.flight.vy = THREE.MathUtils.lerp(state.flight.vy, state.flight.targetVy, Math.min(1, dt * 3.6));
+      state.flight.vz = THREE.MathUtils.lerp(state.flight.vz, state.flight.targetVz, Math.min(1, dt * 3.6));
+      state.flight.x += state.flight.vx * dt;
+      state.flight.y += state.flight.vy * dt;
+      state.flight.z += state.flight.vz * dt;
+      state.flight.x = clamp(state.flight.x, -150000, 150000);
+      state.flight.y = clamp(state.flight.y, MIN_ALTITUDE, MAX_ALTITUDE);
+      state.moveEnergy = Math.min(1, (Math.abs(state.flight.vx) + Math.abs(state.flight.vy) + Math.abs(state.flight.vz)) / (AXIS_MAX_SPEED * 2.4));
+      state.flight.bobPhase += dt * (0.42 + state.moveEnergy * 0.26 + audioState.kick * 0.20 + responseState.flow * 0.08);
+    }
+
+    function updateUnderwaterState() {
+      if (state.portal.active) {
+        state.underwater = false;
+        sky.visible = false;
+        ocean.visible = false;
+        sunSprite.visible = false;
+        mainRing.points.visible = false;
+        outerRing.points.visible = false;
+        shipGroup.visible = false;
+        landmark.group.visible = false;
+        particleSystem.visible = false;
+        renderer.setClearColor(0x02030a, 1);
+        scene.fog.color.set(0x05060c);
+        scene.fog.near = 2000;
+        scene.fog.far = 32000;
+        dirLight.intensity = 0.28 + responseState.bloom * 0.12;
+        hemiLight.intensity = 0.18 + responseState.shimmer * 0.08;
+        underLight.intensity = 0.0;
+        return;
+      }
+
+      state.underwater = camera.position.y < WATER_LEVEL - 6;
+      const depth = saturate((WATER_LEVEL - camera.position.y) / 720);
+      skyMaterial.uniforms.uUnderwater.value = state.underwater ? 1 : 0;
+      skyMaterial.uniforms.uUnderwaterDepth.value = depth;
+      waterUniforms.uUnderwater.value = state.underwater ? 1 : 0;
+      waterUniforms.uUnderwaterDepth.value = depth;
+      sky.visible = true;
+      ocean.visible = true;
+      particleSystem.visible = true;
+      shipGroup.visible = !state.underwater;
+      landmark.group.visible = !state.underwater;
+      sunSprite.visible = !state.underwater;
+      mainRing.points.visible = !state.underwater;
+      outerRing.points.visible = !state.underwater;
+
+      if (state.underwater) {
+        renderer.setClearColor(0x2a6772, 1);
+        scene.fog.color.set(0x5c939a);
+        scene.fog.near = 900;
+        scene.fog.far = 12000;
+        dirLight.intensity = 0.45;
+        hemiLight.intensity = 0.48;
+        underLight.intensity = 1.45 - depth * 0.20;
+      } else {
+        renderer.setClearColor(0x82a6cb, 1);
+        scene.fog.color.set(0xc7d8e7);
+        scene.fog.near = 9000;
+        scene.fog.far = 56000;
+        dirLight.intensity = 2.2;
+        hemiLight.intensity = 1.0;
+        underLight.intensity = 0.0;
+      }
+    }
+
+    function updateCamera() {
+      const y = state.flight.y;
+      const aboveFactor = saturate((y - 430) / (MAX_ALTITUDE - 430));
+      const belowFactor = saturate((WATER_LEVEL - y) / Math.abs(MIN_ALTITUDE));
+      camera.position.set(state.flight.x, y, state.flight.z);
+
+      if (state.portal.active) {
+        const lookDirection = new THREE.Vector3(
+          Math.sin(state.portal.yaw) * Math.cos(state.portal.pitch),
+          Math.sin(state.portal.pitch),
+          Math.cos(state.portal.yaw) * Math.cos(state.portal.pitch)
+        );
+        camera.lookAt(camera.position.clone().add(lookDirection.multiplyScalar(5600)));
+      } else if (camera.position.y >= WATER_LEVEL) {
+        const lookDownAmount = 360 + aboveFactor * 4200;
+        const lookForward = 5600 + aboveFactor * 2600;
+        const baseLookY = Math.max(WATER_LEVEL - 520, camera.position.y - lookDownAmount);
+        const lookDirection = new THREE.Vector3(
+          Math.sin(state.flight.yaw) * Math.cos(state.flight.pitch),
+          (baseLookY - camera.position.y) / lookForward + state.flight.pitch * 0.36,
+          Math.cos(state.flight.yaw) * Math.cos(state.flight.pitch)
+        ).normalize();
+        camera.lookAt(camera.position.clone().add(lookDirection.multiplyScalar(lookForward)));
+      } else {
+        const lookUpAmount = 220 + belowFactor * 1250;
+        const lookForward = 3000 + (1 - belowFactor) * 600;
+        const lookDirection = new THREE.Vector3(
+          Math.sin(state.flight.yaw) * Math.cos(state.flight.pitch),
+          (lookUpAmount / lookForward) + state.flight.pitch * 0.42,
+          Math.cos(state.flight.yaw) * Math.cos(state.flight.pitch)
+        ).normalize();
+        camera.lookAt(camera.position.clone().add(lookDirection.multiplyScalar(lookForward)));
+      }
+      sky.position.copy(camera.position);
+    }
+
+    function updateOcean(dt) {
+      const kick = saturate(audioState.kick);
+      const idleBlend = 1 - state.moveEnergy;
+      state.waveClock += dt * (BASE_WAVE_TIME_SCALE + idleBlend * IDLE_WAVE_BOOST + kick * 1.45);
+      if (state.portal.active) return;
+      ocean.position.x = state.flight.x;
+      ocean.position.z = state.flight.z;
+      waterUniforms.uOrigin.value.set(state.flight.x, state.flight.z);
+      waterUniforms.uTime.value = state.waveClock;
+      waterUniforms.uWaveScale.value = WAVE_SCALE * (1 + kick * 1.18 + Math.sin(state.waveClock * 0.62) * 0.012);
+      waterUniforms.uWaveSpacing.value = WAVE_SPACING * (1 - kick * 0.032);
+    }
+
+    function updateParticleField(dt) {
+      if (state.portal.active) return;
+      particleGeometry.setDrawRange(0, state.underwater ? UNDERWATER_PARTICLE_COUNT : ABOVE_WATER_PARTICLE_COUNT);
+      const speedBoost = 1 + responseState.shimmer * 0.7;
+      const vzFlow = state.flight.vz * dt;
+      const vxFlow = state.flight.vx * dt;
+      const vyFlow = state.flight.vy * dt;
+      for (let i = 0; i < TOTAL_PARTICLE_COUNT; i++) {
+        const index = i * 3;
+        const drift = particleDrift[i];
+        particlePositions[index] -= vxFlow * 0.70;
+        particlePositions[index + 1] -= vyFlow * 0.34;
+        particlePositions[index + 2] -= vzFlow * 1.12;
+        particlePositions[index] += Math.sin(state.waveClock * 0.68 + i * 0.37) * dt * 6.2 * drift * speedBoost;
+        particlePositions[index + 1] += Math.cos(state.waveClock * 0.52 + i * 0.19) * dt * 2.1 * drift * speedBoost;
+        particlePositions[index + 2] -= dt * (22 + drift * 10) * speedBoost;
+        particlePositions[index] = wrapValue(particlePositions[index], -PARTICLE_RANGE_X, PARTICLE_RANGE_X);
+        particlePositions[index + 1] = wrapValue(particlePositions[index + 1], -PARTICLE_RANGE_Y * 0.8, PARTICLE_RANGE_Y);
+        particlePositions[index + 2] = wrapValue(particlePositions[index + 2], -PARTICLE_RANGE_Z_BACK, PARTICLE_RANGE_Z_FRONT);
+      }
+      particleGeometry.attributes.position.needsUpdate = true;
+      particleSystem.position.copy(camera.position);
+      particleSystem.position.y += state.underwater ? 10 : 60;
+      if (state.underwater) {
+        particleMaterial.color.set(0xdffcff);
+        particleMaterial.opacity = 0.22 + responseState.shimmer * 0.05;
+        particleMaterial.size = 4.6 + responseState.shimmer * 0.8;
+      } else {
+        particleMaterial.color.setRGB(0.96, 0.99, 1.0);
+        particleMaterial.opacity = 0.10 + responseState.shimmer * 0.07;
+        particleMaterial.size = 3.4 + responseState.shimmer * 1.8;
+      }
+      particleMaterial.needsUpdate = true;
+    }
+
+    function resize() {
+      state.width = window.innerWidth;
+      state.height = window.innerHeight;
+      camera.aspect = state.width / state.height;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setSize(state.width, state.height);
+    }
+
+    function focusScene() {
+      host.focus({ preventScroll: true });
+      renderer.domElement.focus({ preventScroll: true });
+    }
+
+    function resetMovementKeys() {
+      state.keys.left = false;
+      state.keys.right = false;
+      state.keys.forward = false;
+      state.keys.back = false;
+      state.keys.down = false;
+      state.keys.up = false;
+    }
+
+    function setKeyState(event, isDown) {
+      let handled = false;
+      switch (event.code) {
+        case "ArrowLeft": state.keys.left = isDown; handled = true; break;
+        case "ArrowRight": state.keys.right = isDown; handled = true; break;
+        case "ArrowUp": state.keys.forward = isDown; handled = true; break;
+        case "ArrowDown": state.keys.back = isDown; handled = true; break;
+        case "KeyQ": state.keys.down = isDown; handled = true; break;
+        case "KeyE": state.keys.up = isDown; handled = true; break;
+        case "Space":
+          if (isDown) togglePlayback();
+          handled = true;
+          break;
+      }
+      if (handled) {
+        if (isDown && event.code !== "Space" && !state.musicStarted) startAudio();
+        event.preventDefault();
+      }
+    }
+
+    function clickPortalExit(event) {
+      if (!state.portal.active) return false;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(portalWorld.starTetrahedron.userData.clickables, true);
+      if (hits.length) {
+        leaveSunPortal();
+        return true;
+      }
+      return false;
+    }
+
+    function animate(timestamp) {
+      if (!state.lastTime) state.lastTime = timestamp;
+      const dt = Math.min((timestamp - state.lastTime) / 1000, 0.033);
+      state.lastTime = timestamp;
+      updateAudio();
+      updateElegantResponse(dt);
+      updateFlight(dt);
+      updateCamera();
+      updatePortalTrigger();
+      updateSun();
+      updateSceneMusicResponse();
+      updateUnderwaterState();
+      updateOcean(dt);
+      updateParticleField(dt);
+      updateSkyShips();
+      updateSunRings(dt);
+      updateLandmark(dt);
+      updatePortalWorld(dt);
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    function onPointerDown(event) {
+      if (event.target.closest("button")) return;
+      focusScene();
+      if (clickPortalExit(event)) return;
+      state.pointerActive = true;
+      state.pointerId = event.pointerId;
+      state.lastPointerX = event.clientX;
+      state.lastPointerY = event.clientY;
+      if (!state.portal.active) {
+        state.ring.dragActive = true;
+        state.ring.touchEnergy = 1;
+        state.ring.touchPulse = 1;
+      }
+      host.classList.add("dragging");
+      renderer.domElement.setPointerCapture(event.pointerId);
+    }
+
+    function onPointerMove(event) {
+      if (!state.pointerActive || event.pointerId !== state.pointerId) return;
+      const dx = event.clientX - state.lastPointerX;
+      const dy = event.clientY - state.lastPointerY;
+      state.lastPointerX = event.clientX;
+      state.lastPointerY = event.clientY;
+      if (state.portal.active) {
+        state.portal.targetYaw -= dx * 0.0046;
+        state.portal.targetPitch = clamp(state.portal.targetPitch + dy * 0.0038, -Math.PI * 0.48, Math.PI * 0.48);
+      } else {
+        state.flight.targetYaw -= dx * 0.0042;
+        state.flight.targetPitch = clamp(state.flight.targetPitch + dy * 0.0033, -Math.PI * 0.48, Math.PI * 0.38);
+
+        state.ring.targetOffsetX += dx * 0.006;
+        state.ring.targetOffsetY += dx * 0.0012;
+        state.ring.targetOffsetZ += dy * 0.0013;
+        const touchAmount = Math.sqrt(dx * dx + dy * dy);
+        state.ring.touchEnergy = clamp(state.ring.touchEnergy + touchAmount * 0.008, 0, 2.0);
+        state.ring.touchPulse = clamp(state.ring.touchPulse + touchAmount * 0.010, 0, 2.3);
+      }
+    }
+
+    function endPointer(event) {
+      if (state.pointerId !== null && event.pointerId !== state.pointerId) return;
+      state.pointerActive = false;
+      state.pointerId = null;
+      state.ring.dragActive = false;
+      host.classList.remove("dragging");
+    }
+
+    playPauseBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      togglePlayback();
+    });
+    music.addEventListener("play", syncPlayPauseLabel);
+    music.addEventListener("pause", syncPlayPauseLabel);
+    window.addEventListener("resize", resize);
+    window.addEventListener("blur", resetMovementKeys);
+    document.addEventListener("keydown", (event) => setKeyState(event, true), { passive: false });
+    document.addEventListener("keyup", (event) => setKeyState(event, false), { passive: false });
+    renderer.domElement.addEventListener("pointerdown", onPointerDown, { passive: true });
+    renderer.domElement.addEventListener("pointermove", onPointerMove, { passive: true });
+    renderer.domElement.addEventListener("pointerup", endPointer, { passive: true });
+    renderer.domElement.addEventListener("pointercancel", endPointer, { passive: true });
+    window.addEventListener("touchstart", () => {
+      focusScene();
+    }, { passive: true });
+    window.addEventListener("mousedown", focusScene, { passive: true });
+    window.addEventListener("load", () => {
+      focusScene();
+      syncPlayPauseLabel();
+    });
+
+    resize();
+    syncPlayPauseLabel();
+    focusScene();
+    animate(0);
+  </script>
+</body>
+</html>

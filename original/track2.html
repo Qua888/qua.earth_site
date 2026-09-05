@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Qua — Sphere Chamber</title>
+
+<style>
+body{
+  margin:0;
+  overflow:hidden;
+  background:black;
+  height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  touch-action:manipulation;
+}
+
+#stars{
+  position:absolute;
+  z-index:1;
+  pointer-events:none;
+}
+
+#threeCanvas{
+  position:absolute;
+  top:0;
+  left:0;
+  z-index:3;
+  cursor:pointer;
+  pointer-events:none; /* enabled after start */
+}
+
+/* VISUAL OVERLAY */
+#tapOverlay{
+  position:fixed;
+  inset:0;
+  background:black;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  color:white;
+  z-index:20;
+  font-family:Georgia,serif;
+  padding:40px;
+  box-sizing:border-box;
+}
+
+#tapText{
+  max-width:720px;
+  width:100%;
+  text-align:center;
+  line-height:1.6;
+  font-size:18px;
+  margin:auto;
+}
+
+#startBtn{
+  margin-top:22px;
+  border:1px solid rgba(255,255,255,.35);
+  background:black;
+  color:white;
+  font-family:Georgia,serif;
+  letter-spacing:2px;
+  font-size:12px;
+  padding:12px 22px;
+  border-radius:10px;
+  cursor:pointer;
+}
+
+/* FULLSCREEN TAP CATCHER */
+#startCatcher{
+  position:fixed;
+  inset:0;
+  z-index:50;
+  background:transparent;
+  pointer-events:auto;
+  touch-action:manipulation;
+  -webkit-user-select:none;
+  user-select:none;
+}
+
+#return{
+  position:fixed;
+  bottom:28px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:5;
+  display:flex;
+  gap:10px;
+}
+
+button{
+  border:1px solid rgba(255,255,255,.3);
+  background:black;
+  color:white;
+  font-family:Georgia,serif;
+  letter-spacing:2px;
+  font-size:12px;
+  padding:10px 16px;
+  cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<!-- catches taps ANYWHERE -->
+<div id="startCatcher"></div>
+
+<div id="tapOverlay">
+  <div id="tapText">
+    <p>
+      There is but one awake consciousness.  <br><br>
+      Every number greater than one is but a measure of its own iteration. <br>
+      Symbol zero signifies the infinite womb where “no-thing” is in the capacity of all creation.
+    </p>
+
+    <p>
+      0 qua 1 — no-thing becoming conscious form.<br>
+      1 qua 0 — consciousness as infinity.
+    </p>
+
+    <button id="startBtn" type="button"> Enter & in Joy Play </p>Tilt if on mobile device to land it</button>
+  </div>
+</div>
+
+<canvas id="stars"></canvas>
+
+<div id="return">
+  <button onclick="location.href='index.html'">Return</button>
+  <button onclick="location.href='track3.html'">Next</button>
+</div>
+
+<audio id="music" loop playsinline preload="auto">
+  <source src="Track2_NewSong.mp3" type="audio/mpeg">
+</audio>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+
+<script>
+function isPortraitMobile(){
+  return window.innerWidth < 768 && window.innerHeight > window.innerWidth;
+}
+
+/* ========= STARFIELD ========= */
+
+const canvas = document.getElementById("stars");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let stars = [];
+function buildStars(){
+  stars = [];
+  for(let i=0;i<1888;i++){
+    stars.push({
+      x:Math.random()*canvas.width,
+      y:Math.random()*canvas.height,
+      size:Math.random()*2,
+      speed:0.15+Math.random()*0.1,
+      dir:Math.random()<0.5?1:-1
+    });
+  }
+}
+buildStars();
+
+/* POINTER */
+let pointerX = canvas.width/2;
+let pointerY = canvas.height/2;
+function updatePointer(x,y){ pointerX=x; pointerY=y; }
+
+window.addEventListener("mousemove",(e)=> updatePointer(e.clientX,e.clientY));
+window.addEventListener("click",(e)=> updatePointer(e.clientX,e.clientY));
+window.addEventListener("touchstart",(e)=> updatePointer(e.touches[0].clientX,e.touches[0].clientY), {passive:true});
+window.addEventListener("touchmove",(e)=> updatePointer(e.touches[0].clientX,e.touches[0].clientY), {passive:true});
+
+/* ========= THREE ========= */
+
+const scene = new THREE.Scene();
+const portalGroup = new THREE.Group();
+scene.add(portalGroup);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+
+const renderer = new THREE.WebGLRenderer({alpha:true});
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.domElement.id = "threeCanvas";
+renderer.domElement.style.pointerEvents = "none";
+document.body.appendChild(renderer.domElement);
+
+const starTexture = new THREE.CanvasTexture(canvas);
+starTexture.mapping = THREE.EquirectangularReflectionMapping;
+
+/* SPHERE */
+const sphereTextureCanvas = document.createElement("canvas");
+sphereTextureCanvas.width = 512;
+sphereTextureCanvas.height = 512;
+const stx = sphereTextureCanvas.getContext("2d");
+for(let i=0;i<6000;i++){
+  stx.fillStyle="rgba(255,255,255,0.02)";
+  stx.fillRect(Math.random()*512,Math.random()*512,2,2);
+}
+const sphereTexture = new THREE.CanvasTexture(sphereTextureCanvas);
+
+const geometry = new THREE.SphereGeometry(0.5,64,64);
+const material = new THREE.MeshPhysicalMaterial({
+  color:0x106888,
+  metalness:1,
+  roughness:0.05,
+  map:sphereTexture,
+  envMap:starTexture,
+  envMapIntensity:3.2,
+  clearcoat:1,
+  clearcoatRoughness:0.05
+});
+const sphere = new THREE.Mesh(geometry, material);
+portalGroup.add(sphere);
+sphere.rotation.z = 0.05;
+
+/* CLOUDS */
+const cloudGeometry = new THREE.SphereGeometry(0.505,64,64);
+const cloudCanvas = document.createElement("canvas");
+cloudCanvas.width = 512;
+cloudCanvas.height = 512;
+const cloudCtx = cloudCanvas.getContext("2d");
+for(let i=0;i<20000;i++){
+  cloudCtx.fillStyle="rgba(255,255,255,0.3)";
+  cloudCtx.fillRect(Math.random()*512,Math.random()*512,2,2);
+}
+const cloudTexture = new THREE.CanvasTexture(cloudCanvas);
+const cloudMaterial = new THREE.MeshBasicMaterial({ map:cloudTexture, transparent:true, opacity:0.23 });
+const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+portalGroup.add(clouds);
+
+/* GLOW */
+const glowGeometry = new THREE.SphereGeometry(0.63,64,64);
+const glowMaterial = new THREE.MeshBasicMaterial({
+  color:0xff66cc, transparent:true, opacity:0.08, blending:THREE.AdditiveBlending
+});
+const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+portalGroup.add(glow);
+
+/* PLASMA */
+const plasmaCanvas = document.createElement("canvas");
+plasmaCanvas.width = 512;
+plasmaCanvas.height = 512;
+const pctx = plasmaCanvas.getContext("2d");
+const pgrad = pctx.createRadialGradient(256,256,30,256,256,256);
+pgrad.addColorStop(0,"rgba(255,90,220,0.75)");
+pgrad.addColorStop(0.25,"rgba(255,60,190,0.55)");
+pgrad.addColorStop(0.55,"rgba(220,40,210,0.38)");
+pgrad.addColorStop(0.8,"rgba(150,20,200,0.25)");
+pgrad.addColorStop(1,"rgba(255,90,220,0)");
+pctx.fillStyle = pgrad;
+pctx.fillRect(0,0,512,512);
+
+const plasmaTexture = new THREE.CanvasTexture(plasmaCanvas);
+const plasmaMaterial = new THREE.MeshBasicMaterial({
+  map:plasmaTexture, transparent:true, opacity:0.23, blending:THREE.AdditiveBlending
+});
+const plasma = new THREE.Mesh(new THREE.SphereGeometry(0.68,64,64), plasmaMaterial);
+const plasma2 = plasma.clone();
+portalGroup.add(plasma);
+portalGroup.add(plasma2);
+
+/* LIGHT */
+const light = new THREE.PointLight(0xffffff,1.8);
+light.position.set(2,3,4);
+scene.add(light);
+
+camera.position.z = 3;
+
+function updatePortalAlignment(){
+  portalGroup.position.y = (window.innerWidth < 768) ? -0.26 : 0;
+}
+updatePortalAlignment();
+
+/* ========= AUDIO + START (no debug) ========= */
+
+const tapOverlay = document.getElementById("tapOverlay");
+const startCatcher = document.getElementById("startCatcher");
+const startBtn = document.getElementById("startBtn");
+
+const music = document.getElementById("music");
+music.volume = 0.16;
+
+let audioCtx = null;
+let analyser = null;
+let source = null;
+let data = null;
+
+let bassLevel = 0;
+let highLevel = 0;
+
+let started = false;
+let starting = false;
+let ignoreCanvasClicksUntil = 0;
+
+let lastTouchEndAt = 0;
+
+function ensureAudioGraph(){
+  if(audioCtx) return;
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+
+  source = audioCtx.createMediaElementSource(music);
+  source.connect(analyser);
+  analyser.connect(audioCtx.destination);
+
+  data = new Uint8Array(analyser.frequencyBinCount);
+}
+
+function finishStart(){
+  started = true;
+  starting = false;
+
+  ignoreCanvasClicksUntil = performance.now() + 900;
+
+  tapOverlay.style.display = "none";
+  startCatcher.style.display = "none";
+  renderer.domElement.style.pointerEvents = "auto";
+}
+
+function failStart(){
+  starting = false; // allow retry
+}
+
+function startExperience(e){
+  if(started || starting) return;
+  starting = true;
+
+  if(e){
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  try { music.pause(); } catch(_) {}
+  try { music.currentTime = 0; } catch(_) {}
+  music.muted = false;
+
+  try{
+    ensureAudioGraph();
+    audioCtx.resume(); // do not await
+
+    const p = music.play();
+    Promise.resolve(p).then(() => {
+      setTimeout(() => {
+        if (audioCtx.state === "suspended") {
+          try { audioCtx.resume(); } catch(_) {}
+        }
+        finishStart();
+      }, 50);
+    }).catch(() => failStart());
+  }catch(_){
+    failStart();
+  }
+}
+
+function onTouchEnd(e){
+  lastTouchEndAt = performance.now();
+  startExperience(e);
+}
+
+function onClick(e){
+  if (performance.now() - lastTouchEndAt < 700) return;
+  startExperience(e);
+}
+
+startCatcher.addEventListener("touchend", onTouchEnd, {passive:false});
+startCatcher.addEventListener("click", onClick, {passive:false});
+
+startBtn.addEventListener("touchend", onTouchEnd, {passive:false});
+startBtn.addEventListener("click", onClick, {passive:false});
+
+/* CLICK SPHERE */
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+renderer.domElement.addEventListener("click",(event)=>{
+  if(performance.now() < ignoreCanvasClicksUntil) return;
+
+  mouse.x=(event.clientX/window.innerWidth)*2-1;
+  mouse.y=-(event.clientY/window.innerHeight)*2+1;
+
+  raycaster.setFromCamera(mouse,camera);
+
+  const intersects = raycaster.intersectObject(sphere);
+  if(intersects.length>0){
+    if(audioCtx && audioCtx.state==="suspended") audioCtx.resume();
+    if(music.paused){ music.play(); } else { music.pause(); }
+  }
+});
+
+/* ========= ANIMATION ========= */
+
+let rotationY = 0;
+let bassPulse = 0;
+let starAngle = 0;
+
+function animate(){
+  requestAnimationFrame(animate);
+
+  if(analyser && data && audioCtx){
+    analyser.getByteFrequencyData(data);
+
+    let bassSum=0,bassCount=0;
+    let highSum=0,highCount=0;
+
+    for(let i=0;i<data.length;i++){
+      const freq=i*(audioCtx.sampleRate/2)/data.length;
+      if(freq<=108){ bassSum+=data[i]; bassCount++; }
+      if(freq>=900){ highSum+=data[i]; highCount++; }
+    }
+
+    bassLevel=(bassSum/bassCount)/255;
+    highLevel=(highSum/highCount)/255;
+  }else{
+    bassLevel=0;
+    highLevel=0;
+  }
+
+  starAngle += 0.0003;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const cx = canvas.width/2;
+  const cy = canvas.height/2;
+
+  const bubbleRadius = isPortraitMobile() ? 250 : 333;
+  const push = isPortraitMobile() ? 5.2 : 7;
+
+  stars.forEach(s=>{
+    s.y += s.speed*s.dir*(1+highLevel*2);
+
+    if(s.dir===1 && s.y>canvas.height){ s.y=0; s.x=Math.random()*canvas.width; }
+    if(s.dir===-1 && s.y<0){ s.y=canvas.height; s.x=Math.random()*canvas.width; }
+
+    const dx=s.x-cx, dy=s.y-cy;
+    const cosA=Math.cos(starAngle), sinA=Math.sin(starAngle);
+    const rotatedX=dx*cosA-dy*sinA;
+    const rotatedY=dx*sinA+dy*cosA;
+    s.x=cx+rotatedX;
+    s.y=cy+rotatedY;
+
+    const dxp=s.x-pointerX, dyp=s.y-pointerY;
+    const distp=Math.sqrt(dxp*dxp+dyp*dyp);
+
+    if(distp<bubbleRadius && distp>0.001){
+      const force=(bubbleRadius-distp)/bubbleRadius;
+      s.x+=dxp/distp*force*push;
+      s.y+=dyp/distp*force*push;
+    }
+
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,s.size*(1+highLevel*2),0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${0.68+highLevel})`;
+    ctx.fill();
+  });
+
+  starTexture.needsUpdate = true;
+
+  rotationY += 0.0015;
+
+  sphere.rotation.y = rotationY;
+  sphere.rotation.x = Math.sin(rotationY*0.2)*0.1;
+
+  clouds.rotation.y = -rotationY*0.6;
+  clouds.rotation.x = Math.sin(rotationY*0.15)*0.1;
+
+  if(bassLevel>bassPulse){ bassPulse=bassLevel; }
+  bassPulse *= 0.88;
+
+  const scale = 1+bassPulse*0.35;
+
+  sphere.scale.set(scale,scale,scale);
+  clouds.scale.set(scale,scale,scale);
+  glow.scale.set(scale*1.1,scale*1.1,scale*1.1);
+
+  plasma.rotation.y += 0.0016;
+  plasma.rotation.x += 0.00035;
+
+  plasma2.rotation.y -= 0.0016;
+  plasma2.rotation.x -= 0.00035;
+
+  const portrait = isPortraitMobile();
+  const basePlasmaSize = (window.innerWidth < 768) ? 1.0 : 1.2;
+  const plasmaSize = portrait ? 0.82 : basePlasmaSize;
+
+  const zSep = portrait ? 0.11 : 0.05;
+  plasma.position.z = -zSep;
+  plasma2.position.z = zSep;
+
+  plasma.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
+  plasma2.scale.set(scale*plasmaSize,scale*plasmaSize,scale*plasmaSize);
+
+  renderer.render(scene,camera);
+}
+
+animate();
+
+/* RESIZE */
+window.addEventListener("resize",()=>{
+  canvas.width=window.innerWidth;
+  canvas.height=window.innerHeight;
+
+  camera.aspect=window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(window.innerWidth,window.innerHeight);
+
+  buildStars();
+
+  pointerX=canvas.width/2;
+  pointerY=canvas.height/2;
+
+  updatePortalAlignment();
+});
+
+window.addEventListener("orientationchange",()=>{
+  setTimeout(()=>{
+    canvas.width=window.innerWidth;
+    canvas.height=window.innerHeight;
+
+    camera.aspect=window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(window.innerWidth,window.innerHeight);
+
+    buildStars();
+
+    pointerX=canvas.width/2;
+    pointerY=canvas.height/2;
+
+    updatePortalAlignment();
+  },200);
+});
+</script>
+
+</body>
+</html>

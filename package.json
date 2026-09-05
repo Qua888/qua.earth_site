@@ -1,0 +1,17 @@
+{
+  "name": "qua-earth",
+  "private": true,
+  "scripts": {
+    "build": "vite build --config cosmic-source/vite.config.ts"
+  },
+  "dependencies": {
+    "@types/three": "^0.185.4",
+    "@vitejs/plugin-react": "6.0.2",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "three": "^0.185.1",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vite": "8.0.13"
+  }
+}
