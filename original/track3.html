@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#06141d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Qua — Ocean Flight</title>
   <style>
     * { box-sizing: border-box; }
@@ -11,6 +15,7 @@
       margin: 0;
       width: 100%;
       height: 100%;
+      min-height: 100dvh;
       overflow: hidden;
       background: #000;
       font-family: Georgia, serif;
@@ -29,7 +34,7 @@
 
     #nav {
       position: fixed;
-      bottom: 22px;
+      bottom: max(14px, env(safe-area-inset-bottom));
       left: 50%;
       transform: translateX(-50%);
       z-index: 10;
@@ -37,6 +42,8 @@
       gap: 10px;
       flex-wrap: wrap;
       justify-content: center;
+      width: min(calc(100% - 24px), 560px);
+      padding-bottom: env(safe-area-inset-bottom);
     }
 
     button {
@@ -48,6 +55,7 @@
       font-size: 12px;
       padding: 10px 16px;
       cursor: pointer;
+      min-height: 44px;
     }
 
     button:hover { border-color: rgba(120, 220, 255, 0.40); }
@@ -76,13 +84,14 @@
       }
 
       #nav {
-        bottom: 14px;
+        bottom: max(10px, env(safe-area-inset-bottom));
         gap: 8px;
       }
 
       button {
         font-size: 11px;
         padding: 9px 14px;
+        min-height: 44px;
       }
     }
   </style>
@@ -91,10 +100,10 @@
   <div id="scene" tabindex="0"></div>
 
   <div id="nav">
-    <button type="button" onclick="location.href='index.html'">Return</button>
-    <button type="button" onclick="location.href='track2.html'">Back</button>
+    <button type="button" onclick="location.href='index.html'">Home</button>
+    <button type="button" onclick="location.href='track2.html'">Previous Track</button>
     <button id="playPauseBtn" type="button">Play</button>
-    <button type="button" onclick="location.href='track4.html'">Next</button>
+    <button type="button" onclick="location.href='track4.html'">Next Track</button>
   </div>
 
   <div id="hint">drag = look around
@@ -126,14 +135,16 @@ click white star = return</div>
     const WAVE_SPACING = 1.68;
     const BASE_WAVE_TIME_SCALE = 1.28;
     const IDLE_WAVE_BOOST = 1.28;
+    const MOBILE_MODE = window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 768;
+    const DETAIL_SCALE = MOBILE_MODE ? 0.62 : 1;
 
     const WORLD_SUN_POSITION = new THREE.Vector3(0, 5200, 13200);
     const WORLD_ISLAND_POSITION = new THREE.Vector3(0, -120, 12950);
     const SUN_PORTAL_RADIUS = 1500;
-    const PORTAL_PARTICLE_COUNT = 2800;
-    const PORTAL_WARP_STAR_COUNT = 2200;
-    const PORTAL_WARP_STREAK_COUNT = 900;
-    const PORTAL_ORB_COUNT = 242;
+    const PORTAL_PARTICLE_COUNT = Math.round(2800 * DETAIL_SCALE);
+    const PORTAL_WARP_STAR_COUNT = Math.round(2200 * DETAIL_SCALE);
+    const PORTAL_WARP_STREAK_COUNT = Math.round(900 * DETAIL_SCALE);
+    const PORTAL_ORB_COUNT = Math.round(242 * DETAIL_SCALE);
     const PORTAL_PARTICLE_RANGE = 9000;
     const BEAM_SPIRAL_PARTICLE_COUNT = 0;
 
@@ -362,7 +373,7 @@ click white star = return</div>
     }
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MOBILE_MODE ? 1.15 : 1.5));
     renderer.setSize(state.width, state.height);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.setClearColor(0x82a6cb, 1);
@@ -512,7 +523,7 @@ click white star = return</div>
     }
 
     const mainRing = createRingSystem({
-      particleCount: 2800,
+      particleCount: Math.round(2800 * DETAIL_SCALE),
       radiusY: 2900,
       radiusZ: 1180,
       thickness: 180,
@@ -523,7 +534,7 @@ click white star = return</div>
     });
 
     const outerRing = createRingSystem({
-      particleCount: 2200,
+      particleCount: Math.round(2200 * DETAIL_SCALE),
       radiusY: 3550,
       radiusZ: 1450,
       thickness: 120,
@@ -577,7 +588,7 @@ click white star = return</div>
       });
     });
 
-    for (let i = 0; i < 42; i++) {
+    for (let i = 0; i < (MOBILE_MODE ? 24 : 42); i++) {
       const highBand = Math.random() < 0.84;
       ambientSkyShips.push({
         sprite: createShipSprite(0.76),
@@ -597,7 +608,7 @@ click white star = return</div>
       });
     }
 
-    for (let i = 0; i < 58; i++) {
+    for (let i = 0; i < (MOBILE_MODE ? 30 : 58); i++) {
       const farHigh = Math.random() < 0.78;
       ambientSkyShips.push({
         sprite: createShipSprite(0.70),
@@ -2136,7 +2147,7 @@ click white star = return</div>
       state.height = window.innerHeight;
       camera.aspect = state.width / state.height;
       camera.updateProjectionMatrix();
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MOBILE_MODE ? 1.15 : 1.5));
       renderer.setSize(state.width, state.height);
     }
 
@@ -2212,6 +2223,7 @@ click white star = return</div>
 
     function onPointerDown(event) {
       if (event.target.closest("button")) return;
+      if (event.cancelable) event.preventDefault();
       focusScene();
       if (clickPortalExit(event)) return;
       state.pointerActive = true;
@@ -2224,11 +2236,12 @@ click white star = return</div>
         state.ring.touchPulse = 1;
       }
       host.classList.add("dragging");
-      renderer.domElement.setPointerCapture(event.pointerId);
+      try { renderer.domElement.setPointerCapture(event.pointerId); } catch (_) {}
     }
 
     function onPointerMove(event) {
       if (!state.pointerActive || event.pointerId !== state.pointerId) return;
+      if (event.cancelable) event.preventDefault();
       const dx = event.clientX - state.lastPointerX;
       const dy = event.clientY - state.lastPointerY;
       state.lastPointerX = event.clientX;
@@ -2267,10 +2280,10 @@ click white star = return</div>
     window.addEventListener("blur", resetMovementKeys);
     document.addEventListener("keydown", (event) => setKeyState(event, true), { passive: false });
     document.addEventListener("keyup", (event) => setKeyState(event, false), { passive: false });
-    renderer.domElement.addEventListener("pointerdown", onPointerDown, { passive: true });
-    renderer.domElement.addEventListener("pointermove", onPointerMove, { passive: true });
-    renderer.domElement.addEventListener("pointerup", endPointer, { passive: true });
-    renderer.domElement.addEventListener("pointercancel", endPointer, { passive: true });
+    renderer.domElement.addEventListener("pointerdown", onPointerDown, { passive: false });
+    renderer.domElement.addEventListener("pointermove", onPointerMove, { passive: false });
+    renderer.domElement.addEventListener("pointerup", endPointer, { passive: false });
+    renderer.domElement.addEventListener("pointercancel", endPointer, { passive: false });
     window.addEventListener("touchstart", () => {
       focusScene();
     }, { passive: true });
