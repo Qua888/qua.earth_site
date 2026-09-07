@@ -51,6 +51,8 @@ body {
 }
 
 .hud-stack {
+  transform: scale(0.75);
+  transform-origin: bottom right;
   position: absolute;
   z-index: 2;
   right: calc(22px + env(safe-area-inset-right));
