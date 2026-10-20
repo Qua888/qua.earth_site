@@ -917,10 +917,30 @@ const fragmentShader = /* glsl */ `
     float shell = smoothstep(0.035, 0.3, facing);
     vec3 color = vec3(0.002, 0.003, 0.011) + pearl * rim * 0.8;
     color += matrixSphereStars(uv, id + generation * 9.0) * shell;
+    color += matrixSphereStars(uv * 1.73 + n.z * 0.08, id + 37.0)
+      * shell * 0.72;
     // A miniature cosmic core keeps the black-hole/jet silhouette readable
     // after its original ray-marched image becomes smaller than a pixel.
     vec3 impact = origin + ray * max(dot(center - origin, ray), 0.0) - center;
     vec2 coreUv = vec2(dot(impact, uCameraRight), dot(impact, uCameraUp));
+    // The reference's luminous depth: refracted star layers, green/gold
+    // nebular haze and fine radial light around each tiny cosmic center.
+    float mistField = noise2(coreUv * 2.8 + vec2(id * 0.17, generation))
+      * 0.68 + noise2(n.zx * 4.1 + id * 0.13) * 0.32;
+    vec3 mistTint = mix(vec3(0.035, 0.28, 0.15), vec3(0.29, 0.13, 0.035),
+      smoothstep(0.3, 0.75, mistField));
+    color += mistTint * smoothstep(0.32, 0.78, mistField) * shell * 0.24;
+    float coreRadius = length(coreUv);
+    float coreAngle = atan(coreUv.y, coreUv.x);
+    float spokes = pow(0.5 + 0.5 * cos(coreAngle * 37.0 + id), 46.0)
+      + pow(0.5 + 0.5 * cos(coreAngle * 23.0 - id), 58.0) * 0.45;
+    float starWidth = max(0.008, length(fwidth(coreUv)) * 0.7);
+    float centralStar = exp(-pow(coreRadius / starWidth, 2.0));
+    float centralGlow = exp(-coreRadius * 13.0);
+    color += vec3(0.94, 1.0, 0.83) * centralStar * 0.95;
+    color += vec3(0.14, 0.44, 0.27) * centralGlow * 0.11;
+    color += vec3(0.5, 0.62, 0.38) * spokes * exp(-coreRadius * 6.0)
+      * smoothstep(0.015, 0.045, coreRadius) * 0.14;
     float ringRadius = length(coreUv * vec2(1.0, 1.55));
     float miniatureRing = exp(-pow((ringRadius - 0.105) / 0.018, 2.0));
     float miniatureDisk = exp(-pow(coreUv.y / 0.014, 2.0))
