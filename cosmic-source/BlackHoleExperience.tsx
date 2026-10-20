@@ -8,6 +8,7 @@ const COSMIC_ENTRY_RADIUS = 3.35 * 1.3 * 1.15;
 const MATRIX_SCALE = ((1 + Math.sqrt(5)) / 2) ** 4;
 const MATRIX_ZOOM_END = 7.25;
 const COSMIC_DETAIL_RADIUS = 38;
+const TIDAL_ZOOM_END = 7.4;
 const ORIGINAL_QUA_SITE_URL = 'https://qua.earth/original/index.html';
 const MOUSE_DRAG_SENSITIVITY = 0.0042;
 const POINTER_LOCK_MOUSE_SENSITIVITY = 0.002205;
@@ -712,7 +713,148 @@ const fragmentShader = /* glsl */ `
     return vec4(emission, opacity * 0.82);
   }
 
+  // Beyond the familiar chamber: a finite tidal cathedral, assembled from
+  // seventeen analytic glass frames rather than additional ray-marched rooms.
+  vec3 tidalFrame(
+    vec3 origin, vec3 ray, vec3 center, float size, vec2 turn,
+    float phase, float limit, bool reflection, float sceneScale
+  ) {
+    vec3 point, normal;
+    vec2 uv;
+    float distance, edge;
+    vec3 emission = vec3(0.0);
+    vec3 traceOrigin = origin - center;
+    float traveled = 0.0;
+    for (int face = 0; face < 2; face++) {
+      bool hit = boxShellHit(traceOrigin, ray, vec3(size), turn,
+        distance, point, normal, uv, edge);
+      if (!hit) break;
+      float totalDistance = traveled + distance;
+      vec3 worldPoint = origin + ray * totalDistance;
+      // The sea clips submerged frame segments; its mirror uses the same test.
+      if (totalDistance < limit && worldPoint.y * sceneScale >= -1.53846) {
+        float edgeWidth = max(size * 0.011, totalDistance / max(uResolution.y, 1.0) * 1.5);
+        float line = exp2(-2.4 * pow(edge / edgeWidth, 2.0));
+        float halo = exp2(-1.2 * edge / max(size * 0.075, edgeWidth));
+        vec3 worldNormal = boxNormalToWorld(normal, turn);
+        float fresnel = pow(1.0 - abs(dot(ray, worldNormal)), 3.0);
+        float carving = boxPanelLines(uv / size, 2.2);
+        float resolution = 1.0 - smoothstep(0.1, 0.45, length(fwidth(uv / size)));
+        float pulse = 0.9 + 0.1 * sin(uAltBeat * 0.25 + phase);
+        vec3 copper = mix(vec3(1.24, 0.13, 0.022), vec3(0.72, 0.018, 0.15),
+          0.5 + 0.5 * sin(phase * 0.7));
+        vec3 violet = vec3(0.29, 0.12, 0.49);
+        emission += (copper * (line * 0.88 + halo * 0.14)
+          + violet * fresnel * 0.025
+          + copper * carving * resolution * 0.014) * pulse
+          * (face == 0 ? 1.0 : 0.48);
+      }
+      float stepForward = distance + size * 0.0001;
+      traceOrigin += ray * stepForward;
+      traveled += stepForward;
+    }
+    return emission * (reflection ? 0.7 : 1.0);
+  }
+
+  vec3 tidalArchitecture(vec3 origin, vec3 ray, float journey, float limit, bool reflection) {
+    const float PHI = 1.61803398875;
+    float gathering = smoothstep(6.4, 7.4, journey);
+    float scale = mix(1.0, 0.035, gathering * gathering);
+    vec3 emission = vec3(0.0);
+    vec2 chamberTurn = uBoxTurn;
+    // The original two opposing cubes remain at the center of the journey.
+    emission += tidalFrame(origin / scale, ray, vec3(0.0), 1.0,
+      -chamberTurn * 1.35, 0.0, limit / scale, reflection, scale);
+    emission += tidalFrame(origin / scale, ray, vec3(0.0), 0.53846,
+      chamberTurn, 1.0, limit / scale, reflection, scale);
+    float gates = smoothstep(0.08, 0.9, journey);
+    for (int i = 0; i < 8; i++) {
+      float n = float(i);
+      float angle = n * 0.7853981634;
+      vec3 center = vec3(cos(angle) * 4.8,
+        0.35 + 0.55 * sin(angle * 3.0 + uAltBeat * 0.013), sin(angle) * 4.8);
+      vec2 turn = vec2(angle + sin(uBoxTurn.x) * 0.12 + uAltBeat * 0.005,
+        0.18 * sin(angle + uAltBeat * 0.017));
+      emission += tidalFrame(origin / scale, ray, center, 0.62,
+        turn, n * 0.8, limit / scale, reflection, scale) * gates;
+    }
+    // Golden-ratio spans: each new structure surrounds all earlier ones.
+    // Alternating turns make a dimensional rose rather than a cube lattice.
+    for (int i = 0; i < 7; i++) {
+      float n = float(i);
+      float size = 1.8 * pow(PHI * PHI, n + 1.0);
+      float reveal = smoothstep(n * 0.65 + 0.5, n * 0.65 + 1.35, journey);
+      if (reveal < 0.001) continue;
+      float sign = mod(n, 2.0) < 0.5 ? 1.0 : -1.0;
+      vec2 turn = vec2(n * 0.366 + sign * (sin(uBoxTurn.x) * 0.11 + uAltBeat * 0.004),
+        n * 0.284 + sign * (sin(uBoxTurn.y) * 0.09 + uAltBeat * 0.003));
+      turn += vec2(gathering * 0.9, gathering * 0.38);
+      emission += tidalFrame(origin / scale, ray, vec3(0.0), size,
+        turn, n * 1.618 + 3.0, limit / scale, reflection, scale) * reveal;
+    }
+    return emission;
+  }
+
+  vec3 tidalSky(vec3 ray, float journey) {
+    float night = smoothstep(1.0, 7.0, journey);
+    float horizon = exp(-abs(ray.y) * 18.0);
+    vec3 sky = alternateSky(ray) * mix(0.78, 0.09, night);
+    sky += mix(vec3(0.085, 0.009, 0.035), vec3(0.025, 0.012, 0.045), night) * horizon;
+    sky += outerMicroStarfield(ray) * night * 0.35;
+    return sky;
+  }
+
+  vec3 tidalJourney(vec3 ray, float journey) {
+    const float SEA = -1.53846;
+    // Coordinate sizes stay modest even at the outermost architectural span.
+    float distance = 3.46153846 * exp(journey);
+    vec3 direction = normalize(uCameraPosition);
+    vec3 origin = direction * distance;
+    float waterDistance = 1000000.0;
+    if (abs(ray.y) > 0.0001) {
+      float hit = (SEA - origin.y) / ray.y;
+      if (hit > 0.0) waterDistance = hit;
+    }
+    vec3 color = tidalSky(ray, journey);
+    if (waterDistance < 999999.0) {
+      vec3 point = origin + ray * waterDistance;
+      float detail = 1.0 - smoothstep(12.0, 80.0, waterDistance);
+      vec2 slope = vec2(sin(point.x * 1.7 + point.z * 0.6 + uAltBeat * 0.22),
+        cos(point.z * 1.5 - point.x * 0.5 - uAltBeat * 0.17)) * detail * 0.025;
+      vec3 normal = normalize(vec3(slope.x, 1.0, slope.y));
+      float fresnel = 0.09 + 0.91 * pow(1.0 - abs(dot(normal, -ray)), 3.0);
+      vec3 reflected = reflect(ray, normal);
+      color = mix(vec3(0.003, 0.009, 0.019), tidalSky(reflected, journey), fresnel);
+      vec3 mirrorOrigin = vec3(origin.x, 2.0 * SEA - origin.y, origin.z);
+      vec3 mirrorRay = vec3(ray.x, -ray.y, ray.z);
+      vec3 reflection = tidalArchitecture(mirrorOrigin, mirrorRay, journey, 1000000.0, true);
+      float shimmer = 0.88 + 0.12 * sin(point.z * 2.3 + point.x * 0.45 + uAltBeat * 0.4) * detail;
+      color += reflection * fresnel * shimmer;
+      // Soft, scale-aware rings of reflected light trace the cathedral's tides.
+      float tideScale = exp(journey * 0.82);
+      float radial = length(point.xz) / tideScale;
+      float tide = abs(sin(radial * 0.62 - uAltBeat * 0.008));
+      float aa = max(fwidth(radial) * 0.62, 0.014);
+      float lines = 1.0 - smoothstep(0.0, aa * 2.0, tide);
+      color += vec3(0.024, 0.12, 0.15) * lines * exp(-radial * 0.06)
+        * smoothstep(0.7, 2.0, journey) * 0.25;
+      if (origin.y < SEA) color *= vec3(0.3, 0.56, 0.68);
+    }
+    color += tidalArchitecture(origin, ray, journey, waterDistance, false);
+    float ending = smoothstep(6.75, 7.4, journey);
+    float centralAngle = length(cross(normalize(origin), ray));
+    color += vec3(0.8, 0.12, 0.045) * exp(-pow(centralAngle / 0.0025, 2.0)) * ending;
+    color += vec3(0.17, 0.025, 0.055) * exp(-centralAngle * 110.0) * ending * 0.3;
+    return 1.0 - exp(-max(color, vec3(0.0)) * 1.05);
+  }
+
   vec3 alternateReality(vec3 rayDirection) {
+    float journey = max(0.0, log(uAltDistance / 180.0));
+    vec3 distantRealm = vec3(0.0);
+    if (journey > 0.0) {
+      distantRealm = tidalJourney(rayDirection, journey);
+      if (journey >= 0.8) return distantRealm;
+    }
     vec3 altOrigin = normalize(uCameraPosition) * uAltDistance;
     vec2 innerTurn = uBoxTurn;
     vec2 outerTurn = -uBoxTurn * 1.35;
@@ -862,7 +1004,7 @@ const fragmentShader = /* glsl */ `
       roomColor += vec3(0.012, 0.08, 0.09) * caustic * (1.0 - underwaterFog) * 0.16;
     }
 
-    return clamp(roomColor, 0.0, 1.0);
+    return mix(clamp(roomColor, 0.0, 1.0), distantRealm, smoothstep(0.0, 0.8, journey));
   }
 
   // Fixed-work analytic hierarchy. Only the nearest sphere and its visible
@@ -2219,7 +2361,7 @@ export default function BlackHoleExperience() {
     const idleFarRadius = COSMIC_DETAIL_RADIUS;
     const alternateEntryDistance = BOX_REALM_ENTRY.distance;
     const alternateCrossDistance = 1.1;
-    const alternateMaxDistance = 180.0;
+    const alternateMaxDistance = alternateEntryDistance * Math.exp(TIDAL_ZOOM_END);
     const idleBpm = MUSIC_BPM;
     const idleCameraBpm = MUSIC_BPM / 4;
     const idleFlowSpeed = 1.04;
@@ -2485,12 +2627,13 @@ export default function BlackHoleExperience() {
       if (key === 'w') suppressZoomUntilKeyUp = false;
     };
     const onCosmicWheel = (event: WheelEvent) => {
-      if (realityPhase !== 'cosmic') return;
+      if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       event.preventDefault();
       markInteraction();
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
       const travel = THREE.MathUtils.clamp(event.deltaY * units * 0.0018, -0.42, 0.42);
-      targetRadius *= Math.exp(travel);
+      if (realityPhase === 'cosmic') targetRadius *= Math.exp(travel);
+      else targetAlternateDistance *= Math.exp(travel);
       playGesture(travel > 0 ? MUSIC_LAYERS.clap : MUSIC_LAYERS.dub);
     };
     const onBlur = () => {
@@ -2648,7 +2791,13 @@ export default function BlackHoleExperience() {
       } else {
         radius += (targetRadius - radius) * zoomEase;
       }
-      alternateDistance += (targetAlternateDistance - alternateDistance) * zoomEase;
+      if (alternateDistance > alternateEntryDistance || targetAlternateDistance > alternateEntryDistance) {
+        alternateDistance = Math.exp(THREE.MathUtils.lerp(
+          Math.log(alternateDistance), Math.log(targetAlternateDistance), zoomEase,
+        ));
+      } else {
+        alternateDistance += (targetAlternateDistance - alternateDistance) * zoomEase;
+      }
 
       if (realityPhase === 'alternate') {
         const signedYaw = Math.atan2(
@@ -2659,7 +2808,8 @@ export default function BlackHoleExperience() {
           Math.sin(elevation - previousElevation),
           Math.cos(elevation - previousElevation),
         );
-        const signedTravel = previousAlternateDistance - alternateDistance;
+        const signedTravel = Math.min(previousAlternateDistance, alternateEntryDistance)
+          - Math.min(alternateDistance, alternateEntryDistance);
         const roomMotion = uniforms.uMotion.value;
         boxYaw += signedYaw * 0.96 + signedTravel * 0.11 + delta * 0.16 * roomMotion;
         boxPitch += signedPitch * 0.84 + signedTravel * 0.045 + delta * 0.09 * roomMotion;
