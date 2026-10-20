@@ -3,8 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
-const COSMIC_ENTRY_RADIUS = 3.35 * 1.3;
+const COSMIC_ENTRY_RADIUS = 3.35 * 1.3 * 1.15;
+// Seven finite octahedral generations, each separated by phi^4 in scale.
+const MATRIX_SCALE = ((1 + Math.sqrt(5)) / 2) ** 4;
+const MATRIX_ZOOM_END = 7.25;
+const COSMIC_DETAIL_RADIUS = 38;
 const ORIGINAL_QUA_SITE_URL = 'https://qua.earth/original/index.html';
+const MOUSE_DRAG_SENSITIVITY = 0.0042;
+const POINTER_LOCK_MOUSE_SENSITIVITY = 0.002205;
 const BOX_REALM_ENTRY = {
   distance: 180,
   azimuth: 0.643,
@@ -39,6 +45,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uCameraRight;
   uniform vec3 uCameraUp;
   uniform float uMotion;
+  uniform float uMacroZoom;
 
   #define STEPS 58
   const float WATER_Y = -80.0;
@@ -145,7 +152,7 @@ const fragmentShader = /* glsl */ `
     vec3 temperature = mix(vec3(0.52, 0.68, 1.0), vec3(1.0, 0.72, 0.43), hash21(cell + 9.0));
 
     vec3 lighterTemperature = mix(temperature, vec3(1.0), 0.38);
-    vec3 stars = lighterTemperature * (body * 3.0 + halo * 1.35 + sparkle * 0.8) * 1.9;
+    vec3 stars = lighterTemperature * (body * 3.0 + halo * 1.35 + sparkle * 0.8) * 2.128;
     return vec3(0.00072, 0.00058, 0.00105)
       + nebula
       + stars;
@@ -858,6 +865,126 @@ const fragmentShader = /* glsl */ `
     return clamp(roomColor, 0.0, 1.0);
   }
 
+  // Fixed-work analytic hierarchy. Only the nearest sphere and its visible
+  // children are shaded; subpixel descendants dissolve into a starry density.
+  vec3 matrixSphereStars(vec2 uv, float seed) {
+    vec2 cell = floor(uv * 94.0);
+    vec2 local = fract(uv * 94.0) - 0.5;
+    float h = hash21(cell + seed * 17.3);
+    vec2 offset = vec2(hash21(cell + seed), hash21(cell + 7.1 + seed)) - 0.5;
+    float pin = exp(-dot(local - offset * 0.62, local - offset * 0.62) * 180.0);
+    float presence = smoothstep(0.91, 0.985, h);
+    float detail = 1.0 - smoothstep(0.35, 1.2, length(fwidth(uv * 94.0)));
+    return mix(vec3(0.38, 0.65, 1.0), vec3(1.0, 0.68, 0.9), h)
+      * (pin * presence * detail * 1.8 + (1.0 - detail) * 0.0015);
+  }
+
+  float matrixSphereHit(vec3 origin, vec3 ray, out vec3 center, out float id) {
+    float nearest = 1000.0;
+    center = vec3(0.0);
+    id = 0.0;
+    // A finite cuboctahedral lattice: center, six axial, twelve edge spheres.
+    for (int x = -1; x <= 1; x++) {
+      for (int y = -1; y <= 1; y++) {
+        for (int z = -1; z <= 1; z++) {
+          if (abs(x) + abs(y) + abs(z) > 2) continue;
+          vec3 cell = vec3(float(x), float(y), float(z));
+          vec3 c = cell * 2.65;
+          vec3 oc = origin - c;
+          float b = dot(oc, ray);
+          float d = b * b - dot(oc, oc) + 1.0;
+          if (d < 0.0) continue;
+          float root = sqrt(d);
+          float t = -b - root;
+          if (t < 0.001) t = -b + root;
+          if (t > 0.001 && t < nearest) {
+            nearest = t; center = c;
+            id = dot(cell, vec3(13.1, 47.3, 83.7));
+          }
+        }
+      }
+    }
+    return nearest;
+  }
+
+  vec3 matrixSurface(vec3 origin, vec3 ray, vec3 center, float nearest, float id, float generation) {
+    vec3 n = normalize(origin + ray * nearest - center);
+    float facing = abs(dot(n, -ray));
+    float rim = pow(1.0 - facing, 2.7);
+    vec2 uv = vec2(atan(n.z, n.x) * 0.159154943, n.y * 0.5);
+    vec3 pearl = mix(vec3(0.18, 0.4, 0.58), vec3(0.53, 0.18, 0.47),
+      0.5 + 0.5 * sin(id * 0.21 + n.y * 2.0 + generation * 0.7));
+    float shell = smoothstep(0.035, 0.3, facing);
+    vec3 color = vec3(0.002, 0.003, 0.011) + pearl * rim * 0.8;
+    color += matrixSphereStars(uv, id + generation * 9.0) * shell;
+    // A miniature cosmic core keeps the black-hole/jet silhouette readable
+    // after its original ray-marched image becomes smaller than a pixel.
+    vec3 impact = origin + ray * max(dot(center - origin, ray), 0.0) - center;
+    vec2 coreUv = vec2(dot(impact, uCameraRight), dot(impact, uCameraUp));
+    float ringRadius = length(coreUv * vec2(1.0, 1.55));
+    float miniatureRing = exp(-pow((ringRadius - 0.105) / 0.018, 2.0));
+    float miniatureDisk = exp(-pow(coreUv.y / 0.014, 2.0))
+      * (1.0 - smoothstep(0.12, 0.38, abs(coreUv.x)));
+    float miniatureJet = exp(-pow(coreUv.x / 0.014, 2.0))
+      * smoothstep(0.11, 0.16, abs(coreUv.y))
+      * (1.0 - smoothstep(0.5, 0.72, abs(coreUv.y)));
+    float nativeCosmos = 1.0 - step(0.5, generation);
+    color += vec3(0.9, 0.12, 0.016) * (miniatureRing * 0.45 + miniatureDisk * 0.52) * nativeCosmos;
+    color += vec3(0.52, 0.14, 0.86) * miniatureJet * 0.65 * nativeCosmos;
+    vec3 halfVector = normalize(normalize(vec3(-0.6, 0.75, 0.5)) - ray);
+    float glint = pow(max(dot(n, halfVector), 0.0), 100.0);
+    float facet = pow(max(dot(n, normalize(vec3(0.7, 0.2, 0.68))), 0.0), 18.0);
+    color += vec3(0.6, 0.76, 1.0) * glint * 0.8;
+    color += pearl * facet * 0.06;
+    return color;
+  }
+
+  vec3 matrixGeneration(vec3 origin, vec3 ray, float generation, float zoom) {
+    vec3 center;
+    float id;
+    float t = matrixSphereHit(origin, ray, center, id);
+    if (t > 999.0) return vec3(0.0003, 0.0002, 0.0007);
+    vec3 color = matrixSurface(origin, ray, center, t, id, generation);
+    // These are actual 3D child clusters, not a repeated pattern painted on
+    // the parent. Their transforms match the previous scale exactly, so it
+    // remains nested inside the newly revealed parent as the zoom proceeds.
+    vec3 childOrigin = (origin - center) * 6.85410196625;
+    float weight = 0.94;
+    for (int depth = 0; depth < 3; depth++) {
+      float childGeneration = generation - float(depth) - 1.0;
+      if (childGeneration < 0.0) break;
+      t = matrixSphereHit(childOrigin, ray, center, id);
+      if (t > 999.0) break;
+      vec3 childNormal = normalize(childOrigin + ray * t - center);
+      float resolvable = 1.0 - smoothstep(0.12, 0.45, length(fwidth(childNormal)));
+      color += matrixSurface(childOrigin, ray, center, t, id, childGeneration) * weight * resolvable;
+      if (resolvable < 0.01) break;
+      childOrigin = (childOrigin - center) * 6.85410196625;
+      weight *= 0.9;
+    }
+    return color;
+  }
+
+  vec3 matrixView(vec3 ray, float zoom) {
+    const float SCALE = 6.85410196625; // phi^4
+    float level = min(floor(zoom), 6.0);
+    float phase = zoom - level;
+    vec3 direction = normalize(uCameraPosition);
+    // At the final finite generation the whole crystal turns edge-on, then
+    // passes into a quiet void. Moving inward reverses the same transformation.
+    float turn = smoothstep(6.55, 7.08, zoom) * 3.14159265;
+    ray = rotateX(rotateY(ray, turn * 0.38), turn);
+    direction = rotateX(rotateY(direction, turn * 0.38), turn);
+    float distance = 1.652173913 * pow(SCALE, phase);
+    vec3 a = matrixGeneration(direction * distance, ray, level, zoom);
+    if (level < 6.0 && phase > 0.82) {
+      vec3 b = matrixGeneration(direction * (distance / SCALE), ray, level + 1.0, zoom);
+      a = mix(a, b, smoothstep(0.82, 1.0, phase));
+    }
+    float ending = 1.0 - smoothstep(6.9, 7.25, zoom);
+    return a * ending;
+  }
+
   void main() {
     vec2 p = vUv * 2.0 - 1.0;
     p.x *= uResolution.x / max(uResolution.y, 1.0);
@@ -873,6 +1000,34 @@ const fragmentShader = /* glsl */ `
     if (uRealityMix > 0.999) {
       gl_FragColor = vec4(alternateReality(viewRay), 1.0);
       return;
+    }
+
+    // Macro pixels bypass the expensive accretion-disk marcher entirely.
+    // Within the original radius this branch is absent, preserving that view.
+    float matrixBlend = smoothstep(0.0, 0.58, uMacroZoom);
+    vec3 macroColor = vec3(0.0);
+    float centralAperture = 1.0;
+    if (uMacroZoom > 0.0 && uRealityMix < 0.001) {
+      if (uMacroZoom >= 7.249) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
+      }
+      macroColor = matrixView(viewRay, uMacroZoom);
+      vec3 macroOrigin = normalize(ro) * (1.652173913 * pow(6.85410196625, uMacroZoom));
+      float b = dot(macroOrigin, viewRay);
+      float apertureDistance = max(0.0, dot(macroOrigin, macroOrigin) - b * b);
+      float edgeAA = max(fwidth(apertureDistance), 0.002);
+      centralAperture = 1.0 - smoothstep(1.0 - edgeAA, 1.0 + edgeAA, apertureDistance);
+      centralAperture *= 1.0 - smoothstep(0.7, 1.1, uMacroZoom);
+      if (matrixBlend > 0.999 && centralAperture < 0.001) {
+        float macroVignette = 1.0 - smoothstep(0.52, 1.4, length(p * vec2(0.62, 0.78))) * 0.46;
+        gl_FragColor = vec4(1.0 - exp(-macroColor * macroVignette * 1.24), 1.0); return;
+      }
+      // Bounded physical camera, widening the sampling ray instead of moving
+      // it beyond the range supported by the original black-hole integrator.
+      float magnification = pow(6.85410196625, uMacroZoom);
+      rd = normalize(uCameraForward * 1.62
+        + (uCameraRight * p.x + uCameraUp * p.y) * magnification);
+      viewRay = rd;
     }
 
     vec3 pos = ro;
@@ -1011,6 +1166,12 @@ const fragmentShader = /* glsl */ `
     radiance += energyNodes(ro, viewRay, uCosmicBeat);
 
     float vignette = 1.0 - smoothstep(0.52, 1.4, length(p * vec2(0.62, 0.78))) * 0.46;
+    if (uMacroZoom > 0.0 && uRealityMix < 0.001) {
+      radiance = mix(radiance, macroColor, matrixBlend * (1.0 - centralAperture));
+      // Add the clear crystal rim around the original cosmic sphere.
+      radiance += macroColor * matrixBlend * centralAperture * 0.5;
+      radiance = mix(radiance, macroColor, smoothstep(0.7, 1.1, uMacroZoom));
+    }
     radiance *= vignette;
     radiance = 1.0 - exp(-radiance * 1.24);
     if (uRealityMix > 0.001) {
@@ -2018,6 +2179,7 @@ export default function BlackHoleExperience() {
       uCameraRight: { value: new THREE.Vector3(1, 0, 0) },
       uCameraUp: { value: new THREE.Vector3(0, 1, 0) },
       uMotion: { value: reducedMotion ? 0 : 1 },
+      uMacroZoom: { value: 0 },
     };
     const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms, depthTest: false, depthWrite: false });
     scene.add(new THREE.Mesh(geometry, material));
@@ -2032,9 +2194,9 @@ export default function BlackHoleExperience() {
     const initialElevation = 0.112;
     const initialRadius = COSMIC_ENTRY_RADIUS;
     const cosmicMinRadius = 1.55;
-    const cosmicMaxRadius = 38.0;
+    const cosmicMaxRadius = COSMIC_DETAIL_RADIUS * MATRIX_SCALE ** MATRIX_ZOOM_END;
     const idleNearRadius = 3.35;
-    const idleFarRadius = cosmicMaxRadius;
+    const idleFarRadius = COSMIC_DETAIL_RADIUS;
     const alternateEntryDistance = BOX_REALM_ENTRY.distance;
     const alternateCrossDistance = 1.1;
     const alternateMaxDistance = 180.0;
@@ -2106,15 +2268,17 @@ export default function BlackHoleExperience() {
     };
 
     const updateBasis = () => {
-      const horizontalRadius = Math.cos(elevation) * radius;
+      const physicalRadius = Math.min(radius, COSMIC_DETAIL_RADIUS);
+      const horizontalRadius = Math.cos(elevation) * physicalRadius;
       position.set(
         Math.sin(azimuth) * horizontalRadius,
-        Math.sin(elevation) * radius,
+        Math.sin(elevation) * physicalRadius,
         Math.cos(azimuth) * horizontalRadius,
       );
       forward.copy(position).multiplyScalar(-1).normalize();
       right.set(Math.cos(azimuth), 0, -Math.sin(azimuth)).normalize();
       up.crossVectors(right, forward).normalize();
+      uniforms.uMacroZoom.value = Math.max(0, Math.log(radius / COSMIC_DETAIL_RADIUS) / Math.log(MATRIX_SCALE));
     };
 
     const applyAlternateEntryPose = () => {
@@ -2132,8 +2296,8 @@ export default function BlackHoleExperience() {
       if (realityPhase === 'entering' || realityPhase === 'returning') return;
       if (event.movementX !== 0 || event.movementY !== 0) markInteraction();
       playOrbitGesture(event.movementX, event.movementY);
-      targetAzimuth -= event.movementX * 0.0021;
-      targetElevation -= event.movementY * 0.0021;
+      targetAzimuth -= event.movementX * POINTER_LOCK_MOUSE_SENSITIVITY;
+      targetElevation -= event.movementY * POINTER_LOCK_MOUSE_SENSITIVITY;
     };
 
     const onPointerLock = () => {
@@ -2244,8 +2408,8 @@ export default function BlackHoleExperience() {
       lastPointerY = event.clientY;
       if (dx !== 0 || dy !== 0) markInteraction();
       playOrbitGesture(dx, dy);
-      targetAzimuth -= dx * 0.004;
-      targetElevation -= dy * 0.004;
+      targetAzimuth -= dx * MOUSE_DRAG_SENSITIVITY;
+      targetElevation -= dy * MOUSE_DRAG_SENSITIVITY;
     };
 
     const onCanvasPointerUp = (event: PointerEvent) => {
@@ -2300,6 +2464,15 @@ export default function BlackHoleExperience() {
       if (navigationKeys.has(key)) markInteraction();
       if (key === 'w') suppressZoomUntilKeyUp = false;
     };
+    const onCosmicWheel = (event: WheelEvent) => {
+      if (realityPhase !== 'cosmic') return;
+      event.preventDefault();
+      markInteraction();
+      const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
+      const travel = THREE.MathUtils.clamp(event.deltaY * units * 0.0018, -0.42, 0.42);
+      targetRadius *= Math.exp(travel);
+      playGesture(travel > 0 ? MUSIC_LAYERS.clap : MUSIC_LAYERS.dub);
+    };
     const onBlur = () => {
       keys.clear();
       touchPointers.clear();
@@ -2336,6 +2509,7 @@ export default function BlackHoleExperience() {
     canvas.addEventListener('pointerup', onCanvasPointerUp, pointerListenerOptions);
     canvas.addEventListener('pointercancel', onCanvasPointerUp, pointerListenerOptions);
     canvas.addEventListener('lostpointercapture', onCanvasPointerUp, pointerListenerOptions);
+    canvas.addEventListener('wheel', onCosmicWheel, { passive: false });
     window.addEventListener('keydown', onKeyDown, { passive: false });
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
@@ -2369,7 +2543,7 @@ export default function BlackHoleExperience() {
         targetAzimuth += idleOrbitStep;
       }
 
-      const cosmicIdle = idle && realityPhase === 'cosmic';
+      const cosmicIdle = idle && realityPhase === 'cosmic' && targetRadius <= COSMIC_DETAIL_RADIUS;
       if (cosmicIdle && !wasCosmicIdle) {
         const logNear = Math.log(idleNearRadius);
         const logFar = Math.log(idleFarRadius);
@@ -2449,7 +2623,11 @@ export default function BlackHoleExperience() {
       elevation += elevationDelta * orbitEase;
       azimuth = Math.atan2(Math.sin(azimuth), Math.cos(azimuth));
       elevation = Math.atan2(Math.sin(elevation), Math.cos(elevation));
-      radius += (targetRadius - radius) * zoomEase;
+      if (radius > COSMIC_DETAIL_RADIUS || targetRadius > COSMIC_DETAIL_RADIUS) {
+        radius = Math.exp(THREE.MathUtils.lerp(Math.log(radius), Math.log(targetRadius), zoomEase));
+      } else {
+        radius += (targetRadius - radius) * zoomEase;
+      }
       alternateDistance += (targetAlternateDistance - alternateDistance) * zoomEase;
 
       if (realityPhase === 'alternate') {
@@ -2551,6 +2729,7 @@ export default function BlackHoleExperience() {
       canvas.removeEventListener('pointerup', onCanvasPointerUp, pointerListenerOptions);
       canvas.removeEventListener('pointercancel', onCanvasPointerUp, pointerListenerOptions);
       canvas.removeEventListener('lostpointercapture', onCanvasPointerUp, pointerListenerOptions);
+      canvas.removeEventListener('wheel', onCosmicWheel);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', onBlur);
