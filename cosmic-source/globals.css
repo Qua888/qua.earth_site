@@ -1,5 +1,84 @@
 @import 'tailwindcss';
 
+.cosmic-dialogue {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: max(5.5vh, calc(20px + env(safe-area-inset-bottom)));
+  transform: translateX(-50%);
+  width: min(570px, calc(100% - 40px));
+  color: #343344;
+  padding: 24px 30px 25px;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 3px 24px 3px 24px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.76), rgba(246, 243, 251, 0.61));
+  box-shadow: 0 10px 50px rgba(78, 65, 109, 0.055), inset 0 0 24px rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  animation: guide-arrival 650ms ease both;
+}
+.cosmic-dialogue__eyebrow {
+  display: block;
+  color: #777080;
+  font-size: 9px;
+  letter-spacing: 0.19em;
+  line-height: 1.8;
+}
+.cosmic-dialogue h1 {
+  margin: 10px 0 12px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(25px, 3vw, 35px);
+  font-weight: 400;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.cosmic-dialogue p {
+  margin: 0 0 21px;
+  color: #686372;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.cosmic-dialogue button {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 48px;
+  border: 1px solid rgba(143, 130, 155, 0.3);
+  color: #4d4459;
+  background: rgba(255, 255, 255, 0.63);
+  font: inherit;
+  transition: background 180ms, border-color 180ms, box-shadow 180ms;
+}
+.cosmic-dialogue button:hover { background: #fff; border-color: #9c82ba; }
+.cosmic-dialogue button:focus-visible { outline: 2px solid #9874b7; outline-offset: 4px; }
+.cosmic-dialogue__continue {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 18px;
+  font-size: 11px !important;
+  letter-spacing: 0.08em;
+}
+.cosmic-dialogue__continue span { color: #a58a5b; font-size: 19px; }
+.cosmic-dialogue__choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cosmic-dialogue__choices button { display: flex; align-items: center; gap: 14px; padding: 14px; text-align: left; }
+.cosmic-dialogue__choices strong { font-family: Georgia, serif; font-size: 30px; font-weight: 400; color: #8c7160; }
+.cosmic-dialogue__choices span { font-size: 11px; line-height: 1.5; }
+.cosmic-dialogue__choices small { display: block; color: #82798a; font-size: 9px; margin-top: 5px; }
+@keyframes guide-arrival { from { opacity: 0; translate: 0 12px; } to { opacity: 1; translate: 0 0; } }
+@media (max-width: 540px) {
+  .cosmic-dialogue { padding: 21px 20px; bottom: max(24px, env(safe-area-inset-bottom)); }
+  .cosmic-dialogue p { font-size: 15px; line-height: 1.5; margin-bottom: 17px; }
+  .cosmic-dialogue__choices { gap: 8px; }
+  .cosmic-dialogue__choices button { gap: 9px; padding: 10px; }
+}
+@media (max-height: 540px) and (orientation: landscape) {
+  .cosmic-dialogue { left: auto; right: 4%; bottom: 6%; transform: none; width: 48%; padding: 17px 20px; }
+  .cosmic-dialogue h1 { font-size: 25px; }
+  .cosmic-dialogue p { font-size: 14px; line-height: 1.4; margin-bottom: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .cosmic-dialogue { animation: none; } }
+
 :root {
   --ink: rgba(255, 243, 229, 0.9);
   --muted: rgba(240, 224, 210, 0.5);

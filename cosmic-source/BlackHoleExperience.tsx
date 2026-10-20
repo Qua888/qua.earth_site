@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import {
+  ASCENSION_DURATION, ASCENSION_START, GUIDE_DIALOGUE,
+  cloudRealmShader, createCosmicGuide,
+  type GuideChoice, type GuideStage,
+} from './cosmic-guide';
 
 const COSMIC_ENTRY_RADIUS = 3.35 * 1.3 * 1.15;
 // Seven finite octahedral generations, each separated by phi^4 in scale.
@@ -47,6 +52,8 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uCameraUp;
   uniform float uMotion;
   uniform float uMacroZoom;
+  uniform float uAscension;
+  uniform float uCloudRealm;
 
   #define STEPS 58
   const float WATER_Y = -80.0;
@@ -1031,10 +1038,12 @@ const fragmentShader = /* glsl */ `
         for (int z = -1; z <= 1; z++) {
           if (abs(x) + abs(y) + abs(z) > 2) continue;
           vec3 cell = vec3(float(x), float(y), float(z));
-          vec3 c = cell * 2.65;
+          float gathering = smoothstep(0.01, 2.6, uAscension);
+          float sphereRadius = mix(1.0, 0.018, smoothstep(2.55, 3.85, uAscension));
+          vec3 c = cell * 2.65 * (1.0 - gathering);
           vec3 oc = origin - c;
           float b = dot(oc, ray);
-          float d = b * b - dot(oc, oc) + 1.0;
+          float d = b * b - dot(oc, oc) + sphereRadius * sphereRadius;
           if (d < 0.0) continue;
           float root = sqrt(d);
           float t = -b - root;
@@ -1132,9 +1141,8 @@ const fragmentShader = /* glsl */ `
     float level = min(floor(zoom), 6.0);
     float phase = zoom - level;
     vec3 direction = normalize(uCameraPosition);
-    // At the final finite generation the whole crystal turns edge-on, then
-    // passes into a quiet void. Moving inward reverses the same transformation.
-    float turn = smoothstep(6.55, 7.08, zoom) * 3.14159265;
+    // The final crystal turns before gathering into a single distant seed.
+    float turn = smoothstep(6.55, 7.08, zoom) * 3.14159265 + uAscension * 0.22 * uMotion;
     ray = rotateX(rotateY(ray, turn * 0.38), turn);
     direction = rotateX(rotateY(direction, turn * 0.38), turn);
     float distance = 1.652173913 * pow(SCALE, phase);
@@ -1143,9 +1151,10 @@ const fragmentShader = /* glsl */ `
       vec3 b = matrixGeneration(direction * (distance / SCALE), ray, level + 1.0, zoom);
       a = mix(a, b, smoothstep(0.82, 1.0, phase));
     }
-    float ending = 1.0 - smoothstep(6.9, 7.25, zoom);
-    return a * ending;
+    return a;
   }
+
+  ${cloudRealmShader}
 
   void main() {
     vec2 p = vUv * 2.0 - 1.0;
@@ -1159,6 +1168,29 @@ const fragmentShader = /* glsl */ `
     );
     vec3 viewRay = rd;
 
+    if (uCloudRealm > 0.999) {
+      gl_FragColor = vec4(cloudRealm(p), 1.0); return;
+    }
+    if (uAscension > 0.0) {
+      vec3 gathered = 1.0 - exp(-matrixView(viewRay, uMacroZoom) * 1.24);
+      float r = length(p);
+      float spark = smoothstep(2.8, 3.85, uAscension)
+        * (1.0 - smoothstep(4.2, 5.0, uAscension));
+      float pin = exp(-r * r / max(0.000006, 5.0 / (uResolution.y * uResolution.y)));
+      float flare = exp(-r * 24.0) * 0.18
+        + exp(-abs(p.x) * 650.0 - abs(p.y) * 24.0) * 0.42
+        + exp(-abs(p.y) * 650.0 - abs(p.x) * 24.0) * 0.42;
+      gathered += vec3(1.0, 0.94, 0.82) * (pin + flare) * spark;
+      float bloom = smoothstep(3.85, 6.4, uAscension);
+      float bubbleRadius = mix(0.0, length(vec2(uResolution.x / uResolution.y, 1.0)) + 0.4, bloom);
+      float inside = (1.0 - smoothstep(bubbleRadius - 0.08, bubbleRadius + 0.03, r))
+        * smoothstep(3.85, 4.1, uAscension);
+      float shell = exp(-pow((r - bubbleRadius) / 0.028, 2.0)) * smoothstep(3.85, 4.1, uAscension);
+      vec3 color = mix(gathered, cloudRealm(p), inside);
+      color += shell * vec3(0.82, 0.72, 0.94) * (1.0 - bloom) * 0.6;
+      gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0); return;
+    }
+
     if (uRealityMix > 0.999) {
       gl_FragColor = vec4(alternateReality(viewRay), 1.0);
       return;
@@ -1170,9 +1202,6 @@ const fragmentShader = /* glsl */ `
     vec3 macroColor = vec3(0.0);
     float centralAperture = 1.0;
     if (uMacroZoom > 0.0 && uRealityMix < 0.001) {
-      if (uMacroZoom >= 7.249) {
-        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;
-      }
       macroColor = matrixView(viewRay, uMacroZoom);
       vec3 macroOrigin = normalize(ro) * (1.652173913 * pow(6.85410196625, uMacroZoom));
       float b = dot(macroOrigin, viewRay);
@@ -2229,11 +2258,40 @@ export default function BlackHoleExperience() {
   const audioAutoStartAttemptedRef = useRef(false);
   const audioWantedRef = useRef(false);
   const baseTrackRef = useRef<BaseTrack>('deep');
+  const guideChoiceRef = useRef<((choice: GuideChoice) => void) | null>(null);
+  const guidePanelRef = useRef<HTMLElement>(null);
   const [active, setActive] = useState(false);
   const [alternateRealityActive, setAlternateRealityActive] = useState(false);
   const [supported, setSupported] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
   const [baseTrack, setBaseTrack] = useState<BaseTrack>('deep');
+  const [ascensionActive, setAscensionActive] = useState(false);
+  const [guideStage, setGuideStage] = useState<GuideStage>('hidden');
+
+  const advanceGuide = () => {
+    if (guideStage === 'arrival') setGuideStage('wisdom');
+    else if (guideStage === 'wisdom') setGuideStage('question');
+    else if (guideStage === 'zero' || guideStage === 'one') {
+      guideChoiceRef.current?.(guideStage === 'zero' ? 0 : 1);
+    }
+  };
+
+  useEffect(() => {
+    if (guideStage === 'hidden') return;
+    guidePanelRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    const onGuideKey = (event: KeyboardEvent) => {
+      if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (guideStage === 'question' && (event.key === '0' || event.key === '1')) {
+        event.preventDefault();
+        setGuideStage(event.key === '0' ? 'zero' : 'one');
+      } else if ((event.key === 'Enter' || event.key === ' ') && !(event.target as HTMLElement)?.closest('button')) {
+        event.preventDefault();
+        advanceGuide();
+      }
+    };
+    window.addEventListener('keydown', onGuideKey);
+    return () => window.removeEventListener('keydown', onGuideKey);
+  }, [guideStage]);
 
   const startAudio = () => {
     audioAutoStartAttemptedRef.current = true;
@@ -2342,9 +2400,13 @@ export default function BlackHoleExperience() {
       uCameraUp: { value: new THREE.Vector3(0, 1, 0) },
       uMotion: { value: reducedMotion ? 0 : 1 },
       uMacroZoom: { value: 0 },
+      uAscension: { value: 0 },
+      uCloudRealm: { value: 0 },
     };
     const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms, depthTest: false, depthWrite: false });
     scene.add(new THREE.Mesh(geometry, material));
+    const cosmicGuide = createCosmicGuide();
+    cosmicGuide.resize(initialWidth, initialHeight);
 
     const position = uniforms.uCameraPosition.value;
     const forward = uniforms.uCameraForward.value;
@@ -2384,7 +2446,8 @@ export default function BlackHoleExperience() {
     let wasCosmicIdle = false;
     let audioBeatOffset: number | null = null;
     let realityMix = 0;
-    let realityPhase: 'cosmic' | 'entering' | 'alternate' | 'returning' = 'cosmic';
+    let realityPhase: 'cosmic' | 'entering' | 'alternate' | 'returning' | 'collapsing' | 'guide' = 'cosmic';
+    let ascensionTime = 0;
     let suppressZoomUntilKeyUp = false;
     let entryResetApplied = false;
     let exitResetApplied = false;
@@ -2417,7 +2480,7 @@ export default function BlackHoleExperience() {
       if (left !== right) mask |= left ? MUSIC_LAYERS.hats : MUSIC_LAYERS.shaker;
       if (above !== below) mask |= above ? MUSIC_LAYERS.pad : MUSIC_LAYERS.pulse;
       if (keys.has('w') !== keys.has('s')) mask |= keys.has('w') ? MUSIC_LAYERS.dub : MUSIC_LAYERS.clap;
-      if (realityPhase === 'entering' || realityPhase === 'returning' || !visible) mask = 0;
+      if ((realityPhase !== 'cosmic' && realityPhase !== 'alternate') || !visible) mask = 0;
       audioEngineRef.current?.setMovement(mask);
     };
     const playOrbitGesture = (dx: number, dy: number) => {
@@ -2455,7 +2518,7 @@ export default function BlackHoleExperience() {
 
     const onPointerMove = (event: MouseEvent) => {
       if (document.pointerLockElement !== canvas) return;
-      if (realityPhase === 'entering' || realityPhase === 'returning') return;
+      if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       if (event.movementX !== 0 || event.movementY !== 0) markInteraction();
       playOrbitGesture(event.movementX, event.movementY);
       targetAzimuth -= event.movementX * POINTER_LOCK_MOUSE_SENSITIVITY;
@@ -2475,6 +2538,7 @@ export default function BlackHoleExperience() {
     };
 
     const onCanvasPointerDown = (event: PointerEvent) => {
+      if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       if (document.pointerLockElement === canvas) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
       if (event.cancelable) event.preventDefault();
@@ -2508,7 +2572,7 @@ export default function BlackHoleExperience() {
     const onCanvasPointerMove = (event: PointerEvent) => {
       if (!dragging || document.pointerLockElement === canvas) return;
       if (event.cancelable) event.preventDefault();
-      if (realityPhase === 'entering' || realityPhase === 'returning') {
+      if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') {
         lastPointerX = event.clientX;
         lastPointerY = event.clientY;
         if (touchPointers.has(event.pointerId)) {
@@ -2601,9 +2665,13 @@ export default function BlackHoleExperience() {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       const target = event.target as HTMLElement | null;
       if (target?.matches('button, input, textarea, select')) return;
       const key = event.key.toLowerCase();
+      // A held key from the previous realm must be released before it can
+      // move the next one. Fresh presses still work normally.
+      if (event.repeat && !keys.has(key)) return;
       if (document.pointerLockElement === canvas && key.startsWith('arrow')) event.preventDefault();
       keys.add(key);
       syncMovement();
@@ -2646,6 +2714,40 @@ export default function BlackHoleExperience() {
       syncMovement();
       suppressZoomUntilKeyUp = false;
     };
+
+    guideChoiceRef.current = (choice) => {
+      if (realityPhase !== 'guide') return;
+      onBlur();
+      ascensionTime = 0;
+      uniforms.uAscension.value = 0;
+      uniforms.uCloudRealm.value = 0;
+      radius = targetRadius = initialRadius;
+      idleViewBlend = 0;
+      idleZoomPhase = 0;
+      wasCosmicIdle = false;
+      if (choice === 1) {
+        realityPhase = 'alternate';
+        realityMix = 1;
+        applyAlternateEntryPose();
+        setAlternateRealityActive(true);
+      } else {
+        realityPhase = 'cosmic';
+        realityMix = 0;
+        azimuth = targetAzimuth = initialAzimuth;
+        elevation = targetElevation = initialElevation;
+        alternateDistance = targetAlternateDistance = alternateEntryDistance;
+        boxYaw = BOX_REALM_ENTRY.boxYaw;
+        boxPitch = BOX_REALM_ENTRY.boxPitch;
+        boxTurn.set(boxYaw, boxPitch);
+        setAlternateRealityActive(false);
+        updateBasis();
+      }
+      uniforms.uRealityMix.value = realityMix;
+      setGuideStage('hidden');
+      setAscensionActive(false);
+      markInteraction();
+      canvas.focus({ preventScroll: true });
+    };
     const onResize = () => {
       const bounds = canvas.getBoundingClientRect();
       const width = Math.max(1, Math.round(bounds.width));
@@ -2654,6 +2756,7 @@ export default function BlackHoleExperience() {
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, scale));
       renderer.setSize(width, height, false);
       uniforms.uResolution.value.set(width, height);
+      cosmicGuide.resize(width, height);
     };
     const onVisibility = () => {
       visible = !document.hidden;
@@ -2821,6 +2924,29 @@ export default function BlackHoleExperience() {
       }
       updateBasis();
 
+      if (realityPhase === 'cosmic' && uniforms.uMacroZoom.value >= ASCENSION_START) {
+        realityPhase = 'collapsing';
+        radius = targetRadius = COSMIC_DETAIL_RADIUS * MATRIX_SCALE ** ASCENSION_START;
+        targetAzimuth = azimuth;
+        targetElevation = elevation;
+        onBlur();
+        if (document.pointerLockElement === canvas) document.exitPointerLock();
+        setActive(false);
+        setAscensionActive(true);
+        updateBasis();
+      }
+
+      if (realityPhase === 'collapsing') {
+        // Accumulated visible time pauses naturally in background tabs.
+        ascensionTime = Math.min(ASCENSION_DURATION, ascensionTime + delta);
+        uniforms.uAscension.value = ascensionTime;
+        if (ascensionTime >= ASCENSION_DURATION) {
+          realityPhase = 'guide';
+          uniforms.uCloudRealm.value = 1;
+          setGuideStage('arrival');
+        }
+      }
+
       if (realityPhase === 'cosmic'
         && targetRadius <= cosmicMinRadius + 0.001
         && radius <= cosmicMinRadius + 0.025) {
@@ -2886,6 +3012,14 @@ export default function BlackHoleExperience() {
       uniforms.uRealityMix.value = realityMix;
       uniforms.uAltDistance.value = alternateDistance;
       renderer.render(scene, camera);
+      if (realityPhase === 'guide' || (realityPhase === 'collapsing' && ascensionTime > 5.4)) {
+        const opacity = THREE.MathUtils.smoothstep(ascensionTime, 5.4, ASCENSION_DURATION);
+        cosmicGuide.update(uniforms.uAltBeat.value, opacity, reducedMotion);
+        renderer.autoClear = false;
+        renderer.clearDepth();
+        renderer.render(cosmicGuide.scene, cosmicGuide.camera);
+        renderer.autoClear = true;
+      }
     };
 
     frame = window.requestAnimationFrame(render);
@@ -2905,6 +3039,8 @@ export default function BlackHoleExperience() {
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVisibility);
       resizeObserver.disconnect();
+      guideChoiceRef.current = null;
+      cosmicGuide.dispose();
       material.dispose();
       geometry.dispose();
       renderer.dispose();
@@ -2912,6 +3048,7 @@ export default function BlackHoleExperience() {
   }, []);
 
   const enter = () => {
+    if (ascensionActive) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.focus({ preventScroll: true });
@@ -2935,18 +3072,20 @@ export default function BlackHoleExperience() {
       <canvas
         ref={canvasRef}
         className="space-canvas"
-        tabIndex={0}
-        aria-label={alternateRealityActive
+        tabIndex={ascensionActive ? -1 : 0}
+        aria-label={ascensionActive ? 'A white cloud realm with a floating golden iridescent triangle guide' : alternateRealityActive
           ? 'Interactive chrome portal realm floating above an ocean with a solid-black sphere'
           : 'Interactive three-dimensional view of a black hole and accretion disk'}
-        aria-describedby="controls"
+        aria-describedby={ascensionActive ? undefined : 'controls'}
+        aria-hidden={guideStage !== 'hidden'}
+        style={ascensionActive ? { pointerEvents: 'none' } : undefined}
         onPointerDown={unlockAudio}
         onClick={enter}
       />
 
       {!supported && <div className="fallback" role="alert">This browser cannot render the live space.</div>}
 
-      <div className="hud-stack">
+      {!ascensionActive && <div className="hud-stack">
         <QuaOrb active={active} />
 
         <aside id="controls" className={`controls ${active ? 'controls--active' : ''}`} aria-label="Experience controls">
@@ -3029,10 +3168,52 @@ export default function BlackHoleExperience() {
           <p className="music-guide">Left · hats / Right · shaker<br />Up · pad / Down · pulse<br />Approach · dub / Retreat · clap on 2 &amp; 4</p>
           <p className="music-guide music-guide--quiet">Hold to loop. Release · rides for 8 seconds.</p>
         </aside>
-      </div>
+      </div>}
+
+      {guideStage !== 'hidden' && (
+        <section
+          ref={guidePanelRef}
+          className="cosmic-dialogue"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="guide-title"
+          aria-describedby="guide-speech"
+          onKeyDown={(event) => {
+            if (event.key !== 'Tab') return;
+            const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')];
+            const first = buttons[0];
+            const last = buttons[buttons.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+              event.preventDefault(); last?.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+              event.preventDefault(); first?.focus();
+            }
+          }}
+        >
+          <span className="cosmic-dialogue__eyebrow">{GUIDE_DIALOGUE[guideStage].eyebrow}</span>
+          <h1 id="guide-title">{GUIDE_DIALOGUE[guideStage].title}</h1>
+          <p id="guide-speech" aria-live="polite">{GUIDE_DIALOGUE[guideStage].text}</p>
+          {guideStage === 'question' ? (
+            <div className="cosmic-dialogue__choices">
+              <button type="button" onClick={() => setGuideStage('zero')}>
+                <strong>0</strong><span>The open circle<small>Return to the black hole</small></span>
+              </button>
+              <button type="button" onClick={() => setGuideStage('one')}>
+                <strong>1</strong><span>The first step<small>Enter the red square</small></span>
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="cosmic-dialogue__continue" onClick={advanceGuide}>
+              {GUIDE_DIALOGUE[guideStage].action}<span aria-hidden="true">↗</span>
+            </button>
+          )}
+        </section>
+      )}
 
       <p className="sr-only" aria-live="polite">
-        {alternateRealityActive
+        {ascensionActive
+          ? 'Beyond the last star. Meet the golden guide and choose a path.'
+          : alternateRealityActive
           ? 'Portal realm active. Move forward through the solid-black sphere to continue into the original QUA experience.'
           : active ? 'Immersive controls active. Press Escape to release the cursor.' : 'Immersive controls inactive.'}
       </p>
