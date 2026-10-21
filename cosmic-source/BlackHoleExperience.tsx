@@ -2260,6 +2260,10 @@ export default function BlackHoleExperience() {
   const baseTrackRef = useRef<BaseTrack>('deep');
   const guideChoiceRef = useRef<((choice: GuideChoice) => void) | null>(null);
   const guidePanelRef = useRef<HTMLElement>(null);
+  const guideTurnRef = useRef(0);
+  const guideSteerRef = useRef(0);
+  const guideDragRef = useRef<{ id: number; x: number } | null>(null);
+  const musicDockRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(false);
   const [alternateRealityActive, setAlternateRealityActive] = useState(false);
   const [supported, setSupported] = useState(true);
@@ -2267,6 +2271,7 @@ export default function BlackHoleExperience() {
   const [baseTrack, setBaseTrack] = useState<BaseTrack>('deep');
   const [ascensionActive, setAscensionActive] = useState(false);
   const [guideStage, setGuideStage] = useState<GuideStage>('hidden');
+  const [musicMenuOpen, setMusicMenuOpen] = useState(false);
 
   const advanceGuide = () => {
     if (guideStage === 'arrival') setGuideStage('wisdom');
@@ -2292,6 +2297,22 @@ export default function BlackHoleExperience() {
     window.addEventListener('keydown', onGuideKey);
     return () => window.removeEventListener('keydown', onGuideKey);
   }, [guideStage]);
+
+  useEffect(() => {
+    if (!musicMenuOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!musicDockRef.current?.contains(event.target as Node)) setMusicMenuOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMusicMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', escape);
+    };
+  }, [musicMenuOpen]);
 
   const startAudio = () => {
     audioAutoStartAttemptedRef.current = true;
@@ -2665,8 +2686,17 @@ export default function BlackHoleExperience() {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       const target = event.target as HTMLElement | null;
+      if (realityPhase === 'guide') {
+        if (target?.closest('.qua-music-dock') || target?.matches('input, textarea, select')) return;
+        const key = event.key.toLowerCase();
+        if (['a', 'd', 'arrowleft', 'arrowright'].includes(key)) {
+          event.preventDefault();
+          keys.add(key);
+        }
+        return;
+      }
+      if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       if (target?.matches('button, input, textarea, select')) return;
       const key = event.key.toLowerCase();
       // A held key from the previous realm must be released before it can
@@ -2705,6 +2735,8 @@ export default function BlackHoleExperience() {
       playGesture(travel > 0 ? MUSIC_LAYERS.clap : MUSIC_LAYERS.dub);
     };
     const onBlur = () => {
+      guideSteerRef.current = 0;
+      guideDragRef.current = null;
       keys.clear();
       touchPointers.clear();
       lastPinchDistance = 0;
@@ -2719,6 +2751,8 @@ export default function BlackHoleExperience() {
       if (realityPhase !== 'guide') return;
       onBlur();
       ascensionTime = 0;
+      guideTurnRef.current = 0;
+      guideSteerRef.current = 0;
       uniforms.uAscension.value = 0;
       uniforms.uCloudRealm.value = 0;
       radius = targetRadius = initialRadius;
@@ -2793,6 +2827,11 @@ export default function BlackHoleExperience() {
         || keys.has('q') || keys.has('e') || keys.has('arrowleft') || keys.has('arrowright')
         || keys.has('arrowup') || keys.has('arrowdown') || keys.has('r');
       const stableReality = realityPhase === 'cosmic' || realityPhase === 'alternate';
+      if (realityPhase === 'guide') {
+        const left = keys.has('a') || keys.has('arrowleft');
+        const right = keys.has('d') || keys.has('arrowright');
+        guideTurnRef.current += ((Number(right) - Number(left)) + guideSteerRef.current) * delta * 1.1;
+      }
       const idle = stableReality && !reducedMotion && !dragging && !navigationActive && now - lastInteractionTime > 1200;
       const idleViewEase = 1.0 - Math.exp(-2.4 * delta);
       idleViewBlend += ((idle ? 1 : 0) - idleViewBlend) * idleViewEase;
@@ -3014,7 +3053,7 @@ export default function BlackHoleExperience() {
       renderer.render(scene, camera);
       if (realityPhase === 'guide' || (realityPhase === 'collapsing' && ascensionTime > 5.4)) {
         const opacity = THREE.MathUtils.smoothstep(ascensionTime, 5.4, ASCENSION_DURATION);
-        cosmicGuide.update(uniforms.uAltBeat.value, opacity, reducedMotion);
+        cosmicGuide.update(uniforms.uAltBeat.value, opacity, reducedMotion, guideTurnRef.current);
         renderer.autoClear = false;
         renderer.clearDepth();
         renderer.render(cosmicGuide.scene, cosmicGuide.camera);
@@ -3040,6 +3079,7 @@ export default function BlackHoleExperience() {
       document.removeEventListener('visibilitychange', onVisibility);
       resizeObserver.disconnect();
       guideChoiceRef.current = null;
+      guideSteerRef.current = 0;
       cosmicGuide.dispose();
       material.dispose();
       geometry.dispose();
@@ -3068,12 +3108,12 @@ export default function BlackHoleExperience() {
   };
 
   return (
-    <main className="experience-shell">
+    <main className={`experience-shell${ascensionActive ? ' experience-shell--cloud' : ''}`}>
       <canvas
         ref={canvasRef}
         className="space-canvas"
         tabIndex={ascensionActive ? -1 : 0}
-        aria-label={ascensionActive ? 'A white cloud realm with a floating golden iridescent triangle guide' : alternateRealityActive
+        aria-label={ascensionActive ? 'A white cloud realm with a rainbow-chrome golden pyramid guide and your luminous chakra light body' : alternateRealityActive
           ? 'Interactive chrome portal realm floating above an ocean with a solid-black sphere'
           : 'Interactive three-dimensional view of a black hole and accretion disk'}
         aria-describedby={ascensionActive ? undefined : 'controls'}
@@ -3085,9 +3125,37 @@ export default function BlackHoleExperience() {
 
       {!supported && <div className="fallback" role="alert">This browser cannot render the live space.</div>}
 
-      {!ascensionActive && <div className="hud-stack">
-        <QuaOrb active={active} />
+      <div ref={musicDockRef} className="qua-music-dock">
+        {musicMenuOpen && (
+          <div id="qua-music-menu" className="qua-music-menu" role="group" aria-label="Music playback">
+            <span>QUA · SOUND</span>
+            <div>
+              <button type="button" aria-pressed={soundOn} onClick={() => startAudio()}>Play</button>
+              <button type="button" aria-pressed={!soundOn} onClick={() => {
+                audioWantedRef.current = false;
+                audioEngineRef.current?.setMuted(true);
+                setSoundOn(false);
+              }}>Pause</button>
+            </div>
+            <small>{soundOn ? 'In joy, play.' : 'A moment of stillness.'}</small>
+          </div>
+        )}
+        <button
+          type="button"
+          className="qua-music-button"
+          aria-label="QUA music controls"
+          aria-expanded={musicMenuOpen}
+          aria-controls="qua-music-menu"
+          title="QUA · Music controls"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => {
+            if (document.pointerLockElement) document.exitPointerLock();
+            setMusicMenuOpen(!musicMenuOpen);
+          }}
+        ><QuaOrb active={false} /></button>
+      </div>
 
+      {!ascensionActive && <div className="hud-stack">
         <aside id="controls" className={`controls ${active ? 'controls--active' : ''}`} aria-label="Experience controls">
           <div className="controls-heading">
             <span className="status-dot" />
@@ -3171,24 +3239,31 @@ export default function BlackHoleExperience() {
       </div>}
 
       {guideStage !== 'hidden' && (
+        <div
+          className="guide-gesture-surface"
+          aria-hidden="true"
+          onPointerDown={(event) => {
+            guideDragRef.current = { id: event.pointerId, x: event.clientX };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const drag = guideDragRef.current;
+            if (!drag || drag.id !== event.pointerId) return;
+            guideTurnRef.current += (event.clientX - drag.x) * 0.012;
+            drag.x = event.clientX;
+          }}
+          onPointerUp={() => { guideDragRef.current = null; }}
+          onPointerCancel={() => { guideDragRef.current = null; }}
+        />
+      )}
+      {guideStage !== 'hidden' && (
         <section
           ref={guidePanelRef}
           className="cosmic-dialogue"
           role="dialog"
-          aria-modal="true"
+          aria-modal="false"
           aria-labelledby="guide-title"
           aria-describedby="guide-speech"
-          onKeyDown={(event) => {
-            if (event.key !== 'Tab') return;
-            const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button')];
-            const first = buttons[0];
-            const last = buttons[buttons.length - 1];
-            if (event.shiftKey && document.activeElement === first) {
-              event.preventDefault(); last?.focus();
-            } else if (!event.shiftKey && document.activeElement === last) {
-              event.preventDefault(); first?.focus();
-            }
-          }}
         >
           <span className="cosmic-dialogue__eyebrow">{GUIDE_DIALOGUE[guideStage].eyebrow}</span>
           <h1 id="guide-title">{GUIDE_DIALOGUE[guideStage].title}</h1>
@@ -3196,10 +3271,10 @@ export default function BlackHoleExperience() {
           {guideStage === 'question' ? (
             <div className="cosmic-dialogue__choices">
               <button type="button" onClick={() => setGuideStage('zero')}>
-                <strong>0</strong><span>The open circle<small>Return to the black hole</small></span>
+                <strong>0</strong><span>Return to possibility<small>The black-hole beginning</small></span>
               </button>
               <button type="button" onClick={() => setGuideStage('one')}>
-                <strong>1</strong><span>The first step<small>Enter the red square</small></span>
+                <strong>1</strong><span>Step into form<small>Enter the red square</small></span>
               </button>
             </div>
           ) : (
@@ -3207,6 +3282,27 @@ export default function BlackHoleExperience() {
               {GUIDE_DIALOGUE[guideStage].action}<span aria-hidden="true">↗</span>
             </button>
           )}
+          <div className="guide-steering" aria-label="Turn your light body">
+            <button type="button" aria-label="Twirl chakras left"
+              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); guideSteerRef.current = -1; }}
+              onPointerUp={() => { guideSteerRef.current = 0; }}
+              onPointerCancel={() => { guideSteerRef.current = 0; }}
+              onLostPointerCapture={() => { guideSteerRef.current = 0; }}
+              onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') guideSteerRef.current = -1; }}
+              onKeyUp={() => { guideSteerRef.current = 0; }}
+              onBlur={() => { guideSteerRef.current = 0; }}
+            >←</button>
+            <span>Drag or use ← → to turn your light</span>
+            <button type="button" aria-label="Twirl chakras right"
+              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); guideSteerRef.current = 1; }}
+              onPointerUp={() => { guideSteerRef.current = 0; }}
+              onPointerCancel={() => { guideSteerRef.current = 0; }}
+              onLostPointerCapture={() => { guideSteerRef.current = 0; }}
+              onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') guideSteerRef.current = 1; }}
+              onKeyUp={() => { guideSteerRef.current = 0; }}
+              onBlur={() => { guideSteerRef.current = 0; }}
+            >→</button>
+          </div>
         </section>
       )}
 

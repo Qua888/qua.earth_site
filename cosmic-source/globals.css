@@ -3,10 +3,9 @@
 .cosmic-dialogue {
   position: absolute;
   z-index: 4;
-  left: 50%;
+  left: 8%;
   bottom: max(5.5vh, calc(20px + env(safe-area-inset-bottom)));
-  transform: translateX(-50%);
-  width: min(570px, calc(100% - 40px));
+  width: min(550px, calc(100% - 40px));
   color: #343344;
   padding: 24px 30px 25px;
   border: 1px solid rgba(255, 255, 255, 0.85);
@@ -67,7 +66,7 @@
 .cosmic-dialogue__choices small { display: block; color: #82798a; font-size: 9px; margin-top: 5px; }
 @keyframes guide-arrival { from { opacity: 0; translate: 0 12px; } to { opacity: 1; translate: 0 0; } }
 @media (max-width: 540px) {
-  .cosmic-dialogue { padding: 21px 20px; bottom: max(24px, env(safe-area-inset-bottom)); }
+  .cosmic-dialogue { left: 16px; width: calc(100% - 32px); padding: 20px; bottom: calc(88px + env(safe-area-inset-bottom)); }
   .cosmic-dialogue p { font-size: 15px; line-height: 1.5; margin-bottom: 17px; }
   .cosmic-dialogue__choices { gap: 8px; }
   .cosmic-dialogue__choices button { gap: 9px; padding: 10px; }
@@ -78,6 +77,26 @@
   .cosmic-dialogue p { font-size: 14px; line-height: 1.4; margin-bottom: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .cosmic-dialogue { animation: none; } }
+
+.guide-gesture-surface { position: absolute; inset: 0; z-index: 3; touch-action: none; cursor: grab; }
+.guide-gesture-surface:active { cursor: grabbing; }
+.guide-steering { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 10px; }
+.guide-steering span { font-size: 9px; color: #8a8094; text-align: center; }
+.guide-steering button { min-width: 44px; min-height: 44px; border-color: transparent; background: transparent; font-size: 19px; touch-action: none; }
+.qua-music-dock { position: absolute; z-index: 8; right: calc(20px + env(safe-area-inset-right)); bottom: calc(15px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; align-items: flex-end; gap: 9px; pointer-events: none; }
+.qua-music-button { display: block; width: 70px; height: 70px; padding: 0; border: 0; border-radius: 50%; background: transparent; cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; }
+.qua-music-button:focus-visible { outline: 1px solid #bb8fe5; outline-offset: 3px; }
+.qua-music-button .qua-orb { width: 100%; height: 100%; opacity: 1; }
+.qua-music-menu { width: 210px; padding: 17px; color: #eee1f3; background: rgba(15, 10, 23, 0.86); border: 1px solid rgba(220, 192, 244, 0.25); backdrop-filter: blur(14px); border-radius: 14px 14px 3px 14px; pointer-events: auto; box-shadow: 0 10px 36px rgba(17, 10, 30, 0.15); }
+.qua-music-menu > span { display: block; font-size: 9px; letter-spacing: 0.2em; margin-bottom: 13px; }
+.qua-music-menu > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.qua-music-menu button { min-height: 44px; border: 1px solid rgba(220, 192, 244, 0.25); border-radius: 4px; background: transparent; color: inherit; font: inherit; font-size: 11px; cursor: pointer; }
+.qua-music-menu button[aria-pressed="true"] { border-color: #c9a0e5; background: rgba(195, 145, 232, 0.16); }
+.qua-music-menu button:focus-visible { outline: 2px solid #bb8fe5; outline-offset: 2px; }
+.qua-music-menu small { display: block; font-family: Georgia, serif; color: #c2afcd; font-size: 12px; margin-top: 12px; }
+.experience-shell--cloud .qua-music-menu { background: rgba(255, 252, 255, 0.93); color: #54415f; border-color: #ded0e4; }
+.experience-shell--cloud .qua-music-menu small { color: #8f7a9a; }
+@media (max-width: 540px) { .qua-music-dock { right: calc(12px + env(safe-area-inset-right)); bottom: calc(10px + env(safe-area-inset-bottom)); } .qua-music-button { width: 58px; height: 58px; } }
 
 :root {
   --ink: rgba(255, 243, 229, 0.9);
@@ -135,7 +154,7 @@ body {
   position: absolute;
   z-index: 2;
   right: calc(22px + env(safe-area-inset-right));
-  bottom: calc(22px + env(safe-area-inset-bottom));
+  bottom: calc(98px + env(safe-area-inset-bottom));
   display: flex;
   width: 228px;
   flex-direction: column;
@@ -387,7 +406,7 @@ body {
 
   .hud-stack {
     right: calc(12px + env(safe-area-inset-right));
-    bottom: calc(12px + env(safe-area-inset-bottom));
+    bottom: calc(80px + env(safe-area-inset-bottom));
     width: min(218px, calc(100vw - 24px));
     gap: 8px;
   }
