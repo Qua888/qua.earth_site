@@ -1,40 +1,15 @@
 import * as THREE from 'three';
 
-export type GuideStage = 'hidden' | 'arrival' | 'wisdom' | 'question' | 'zero' | 'one';
+export type GuideStage = 'hidden' | 'arrival';
 export type GuideChoice = 0 | 1;
 export const ASCENSION_START = 7.20;
 export const ASCENSION_DURATION = 6.6;
 
 export const GUIDE_DIALOGUE = {
   arrival: {
-    eyebrow: 'BEYOND THE LAST STAR',
-    title: 'Oh. You made it.',
-    text: 'Welcome, traveller. Aligned, harmonic, and still wonderfully curious. Congratulations: you followed the many all the way back to the one.',
-    action: 'Where am I?',
-  },
-  wisdom: {
-    eyebrow: 'THE KEEPER OF THE INTERVAL',
-    title: 'A little cosmic wisdom.',
-    text: 'There is but one awake consciousness; its many forms are iterations. Zero is the infinite womb: no-thing, with the capacity for all creation. A little wisdom to carry lightly. Shall we put it into play?',
-    action: 'Ask me.',
-  },
-  question: {
-    eyebrow: 'TWO PATHS · NO WRONG ANSWER',
-    title: 'Zero, or one?',
-    text: '0 qua 1 — no-thing becoming conscious form. 1 qua 0 — consciousness as infinity. Neither is apart from the other. Which direction would you like to experience?',
-    action: '',
-  },
-  zero: {
-    eyebrow: '0 · THE OPEN CIRCLE',
-    title: 'Nothing to prove. Everything to become.',
-    text: 'Ah, zero. An infinity of room to begin. Return to the beginning, to the womb of stars—not empty, but possible. In joy, play. Bring that lovely curiosity with you.',
-    action: 'Begin again',
-  },
-  one: {
-    eyebrow: '1 · THE FIRST STEP',
-    title: 'Infinity has put on a shape.',
-    text: 'One, then. Consciousness taking form. Into the square you go—try not to mistake the frame for the whole picture. In joy, play. Peace, and elegant vitality.',
-    action: 'Enter the square',
+    eyebrow: 'THE QUIET BETWEEN',
+    title: 'There you are.',
+    text: 'The many return to one. Rest a moment, then follow what calls.',
   },
 } as const;
 
@@ -131,67 +106,60 @@ export function createCosmicGuide() {
   aura.renderOrder = 1;
   avatar.add(aura);
 
-  // Merge the little rounded anatomical forms once: one body draw, no
-  // skeletal animation, shadows, lighting rig, or per-frame mesh allocation.
-  const bodyParts: THREE.BufferGeometry[] = [];
-  const addEllipsoid = (x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
-    const part = new THREE.SphereGeometry(1, 12, 8);
-    part.scale(sx, sy, sz); part.translate(x, y, z); bodyParts.push(part);
-  };
-  const addLimb = (from: THREE.Vector3, to: THREE.Vector3, top: number, bottom: number) => {
-    const direction = to.clone().sub(from);
-    const part = new THREE.CylinderGeometry(top, bottom, direction.length(), 8, 1);
-    part.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize()));
-    part.translate((from.x + to.x) / 2, (from.y + to.y) / 2, (from.z + to.z) / 2);
-    bodyParts.push(part);
-  };
-  addEllipsoid(0, 0.97, 0, 0.112, 0.143, 0.105);
-  addEllipsoid(0, 0.22, 0, 0.125, 0.35, 0.085);
-  addEllipsoid(0, -0.28, 0, 0.13, 0.15, 0.09);
-  addLimb(new THREE.Vector3(0, 0.50, 0), new THREE.Vector3(0, 0.83, 0), 0.035, 0.041);
-  addLimb(new THREE.Vector3(0, -0.30, 0), new THREE.Vector3(0, 0.17, 0), 0.09, 0.10);
-  for (const side of [-1, 1]) {
-    addLimb(new THREE.Vector3(side * 0.28, -0.31, 0.035), new THREE.Vector3(side * 0.12, 0.43, 0), 0.038, 0.022);
-    addLimb(new THREE.Vector3(side * 0.16, -1.14, 0.015), new THREE.Vector3(side * 0.063, -0.34, 0), 0.047, 0.025);
+  // Connected meridian streams return through the inner beam, expand
+  // outside the shell, and rise into the ether above it in the same draw.
+  const fieldParts: THREE.BufferGeometry[] = [];
+  const beam = new THREE.CylinderGeometry(0.005, 0.012, 3.3, 6, 1);
+  beam.translate(0, 0.45, 0);
+  fieldParts.push(beam);
+  for (let meridian = 0; meridian < 6; meridian++) {
+    const phi = meridian * Math.PI / 3;
+    const meridianPath = [
+      [0.035, 2.03], [0.025, 1.28], [0.04, 0.3], [0.10, -0.65],
+      [0.34, -1.12], [0.69, -0.72], [0.84, 0.05], [0.68, 0.95],
+      [0.38, 1.67], [0.10, 2.02],
+    ];
+    const points = meridianPath.map(([radial, y]) => new THREE.Vector3(
+      Math.cos(phi) * radial, y, Math.sin(phi) * radial));
+    fieldParts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 32, 0.006, 3, true));
   }
-  const bodyPositions: number[] = [], bodyNormals: number[] = [];
-  for (const part of bodyParts) {
+  const fieldPositions: number[] = [];
+  for (const part of fieldParts) {
     const triangles = part.toNonIndexed();
-    bodyPositions.push(...Array.from(triangles.getAttribute('position').array));
-    bodyNormals.push(...Array.from(triangles.getAttribute('normal').array));
+    fieldPositions.push(...Array.from(triangles.getAttribute('position').array));
     triangles.dispose(); part.dispose();
   }
-  const bodyGeometry = new THREE.BufferGeometry();
-  bodyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bodyPositions, 3));
-  bodyGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(bodyNormals, 3));
-  const bodyMaterial = new THREE.ShaderMaterial({
-    uniforms: auraUniforms, transparent: true, depthWrite: true,
+  const fieldGeometry = new THREE.BufferGeometry();
+  fieldGeometry.setAttribute('position', new THREE.Float32BufferAttribute(fieldPositions, 3));
+  const fieldUniforms = { uOpacity: { value: 0 }, uTime: { value: 0 } };
+  const fieldMaterial = new THREE.ShaderMaterial({
+    uniforms: fieldUniforms, transparent: true, depthWrite: false,
     vertexShader: `
-      varying vec3 vNormal; varying vec3 vView; varying float vHeight;
+      varying vec3 vLocal;
       void main() {
-        vNormal = normalize(normalMatrix * normal); vHeight = position.y;
-        vec4 p = modelViewMatrix * vec4(position, 1.0); vView = -p.xyz;
-        gl_Position = projectionMatrix * p;
+        vLocal = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
-      varying vec3 vNormal; varying vec3 vView; varying float vHeight;
-      uniform float uOpacity;
+      varying vec3 vLocal; uniform float uOpacity; uniform float uTime;
       void main() {
-        vec3 n = normalize(vNormal);
-        float facing = max(dot(n, normalize(vView)), 0.0);
-        float light = 0.5 + 0.5 * dot(n, normalize(vec3(-0.5, 0.7, 1.0)));
-        vec3 pearl = mix(vec3(0.58, 0.48, 0.73), vec3(0.96, 0.93, 1.0), light);
-        vec3 spectrum = 0.65 + 0.28 * cos(vec3(0.0, 2.1, 4.2) + vHeight * 3.7 + n.z * 0.5);
-        float glint = pow(max(dot(n, normalize(vec3(-0.3, 0.65, 1.0))), 0.0), 24.0);
-        vec3 color = mix(pearl, spectrum, 0.24) + glint * 0.22;
-        gl_FragColor = vec4(color, (0.38 + (1.0 - facing) * 0.26) * uOpacity);
+        float axis = 1.0 - smoothstep(0.02, 0.06, length(vLocal.xz));
+        float flow = pow(0.5 + 0.5 * sin(vLocal.y * 5.0 - uTime * 0.34), 4.0);
+        vec3 pearl = vec3(0.80, 0.75, 0.96);
+        vec3 spectrum = 0.65 + 0.28 * cos(vec3(0.0, 2.1, 4.2) + vLocal.y * 2.4);
+        vec3 color = mix(spectrum, vec3(0.98, 0.96, 1.0), axis * 0.7);
+        float etherFade = 1.0 - smoothstep(1.15, 2.12, vLocal.y);
+        float outerSoftness = 1.0 - 0.22 * smoothstep(0.5, 0.84, length(vLocal.xz));
+        gl_FragColor = vec4(mix(pearl, color, 0.8),
+          (0.22 + flow * 0.32 + axis * 0.18) * etherFade * outerSoftness * uOpacity);
       }
     `,
   });
-  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-  body.name = 'dimensional-light-body';
-  avatar.add(body);
+  const field = new THREE.Mesh(fieldGeometry, fieldMaterial);
+  field.name = 'toroidal-light-field';
+  field.renderOrder = 2;
+  avatar.add(field);
   const lightGeometry = new THREE.BufferGeometry();
   const lightPositions = new Float32Array(23 * 3);
   const lightColors = new Float32Array(23 * 3);
@@ -232,7 +200,7 @@ export function createCosmicGuide() {
   const lights = new THREE.Points(lightGeometry, lightMaterial);
   lights.frustumCulled = false;
   lights.name = 'chakra-lights';
-  lights.renderOrder = 2;
+  lights.renderOrder = 3;
   avatar.add(lights);
   let compactLandscape = false;
 
@@ -245,8 +213,13 @@ export function createCosmicGuide() {
       const portrait = camera.aspect < 0.7;
       guide.scale.setScalar(compactLandscape ? 0.65 : portrait ? 0.45 : 0.94);
       guide.position.x = compactLandscape ? -1.8 : portrait ? -0.35 : -1.18;
-      avatar.scale.setScalar(compactLandscape ? 0.55 : portrait ? 0.46 : 0.86);
-      avatar.position.set(compactLandscape ? -0.65 : portrait ? 0.48 : 1.4, compactLandscape ? 0.18 : portrait ? 0.62 : -0.05, 0.7);
+      avatar.scale.setScalar(compactLandscape ? 0.44 : portrait ? 0.36 : 0.68);
+      // Nearer than the pyramid: we look over the traveller's energy field
+      // from the front-right foreground toward the distant guide.
+      avatar.position.set(compactLandscape ? -0.62 : portrait ? 0.30 : 1.0,
+        compactLandscape ? 0.16 : portrait ? 0.43 : -0.22,
+        compactLandscape ? 1.2 : portrait ? 1.25 : 1.55);
+      avatar.rotation.z = -0.07;
       lightUniforms.uHeight.value = height;
     },
     update(time: number, opacity: number, reducedMotion: boolean, avatarTurn = 0) {
@@ -257,6 +230,8 @@ export function createCosmicGuide() {
       guide.rotation.set(0.06, reducedMotion ? 0.35 : 0.35 + time * 0.045, 0.0);
       auraUniforms.uOpacity.value = opacity;
       auraUniforms.uTurn.value = avatarTurn;
+      fieldUniforms.uOpacity.value = opacity;
+      fieldUniforms.uTime.value = reducedMotion ? 0 : time;
       avatar.rotation.y = avatarTurn + (reducedMotion ? 0.26 : 0.26 + time * 0.027);
       lightUniforms.uOpacity.value = opacity;
       lightPositions.set([0, 0.99, 0.06, 0, 0.99, 0.08]);
@@ -273,7 +248,7 @@ export function createCosmicGuide() {
     },
     dispose() {
       geometry.dispose(); material.dispose(); auraGeometry.dispose(); auraMaterial.dispose();
-      bodyGeometry.dispose(); bodyMaterial.dispose();
+      fieldGeometry.dispose(); fieldMaterial.dispose();
       lightGeometry.dispose(); lightMaterial.dispose();
     },
   };
@@ -283,7 +258,7 @@ export function createCosmicGuide() {
 // raymarch, texture downloads, postprocessing or particle allocations.
 export const cloudRealmShader = /* glsl */ `
   vec3 cloudRealm(vec2 p) {
-    float t = uAltBeat * 0.022;
+    float t = uAltBeat * 0.022 * uMotion;
     float lower = 1.0 - smoothstep(-0.9, 0.55, p.y);
     float n = noise2(p * vec2(1.5, 2.4) + vec2(t, -t * 0.3));
     float detail = noise2(p * 3.7 - vec2(t * 0.7, t * 0.2));
@@ -299,6 +274,16 @@ export const cloudRealmShader = /* glsl */ `
     color += vec3(0.04, 0.028, 0.008) * halo;
     float floorMist = exp(-pow((p.y + 0.03 + n * 0.11) / 0.17, 2.0));
     color = mix(color, vec3(0.99, 0.984, 1.0), floorMist * 0.4);
+    // Two broad low-frequency ribbons drift along the ground; no particle
+    // layer, raymarch, or additional render pass is needed for the mist.
+    float drift = uAltBeat * 0.013 * uMotion;
+    float groundNoise = noise2(vec2(p.x * 1.25 - drift, p.y * 3.0 + drift * 0.17));
+    float nearNoise = noise2(vec2(p.x * 0.73 + drift * 0.42, p.y * 4.4 - drift * 0.1));
+    float farRibbon = exp(-pow((p.y + 0.40 + groundNoise * 0.18) / 0.15, 2.0));
+    float nearRibbon = exp(-pow((p.y + 0.75 + nearNoise * 0.16) / 0.21, 2.0));
+    float mist = clamp(farRibbon * 0.34 + nearRibbon * 0.43, 0.0, 0.65);
+    color -= vec3(0.025, 0.026, 0.012) * mist;
+    color = mix(color, vec3(0.993, 0.987, 1.0), mist * (0.4 + groundNoise * 0.35));
     // A faint pool of shadow gives the floating guide a position in space.
     float shadow = exp(-dot((p - vec2(0.0, -0.15)) * vec2(3.2, 18.0),
       (p - vec2(0.0, -0.15)) * vec2(3.2, 18.0)));

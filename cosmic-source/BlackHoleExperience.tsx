@@ -2257,13 +2257,14 @@ function QuaOrb({ active }: QuaOrbProps) {
   );
 }
 
-type ArrivalStage = 'choice' | 'invitation' | 'exploring';
+type ArrivalStage = 'choice' | 'exploring';
 
 export default function BlackHoleExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arrivalPanelRef = useRef<HTMLElement>(null);
   const arrivalStageRef = useRef<ArrivalStage>('choice');
   const [arrivalStage, setArrivalStage] = useState<ArrivalStage>('choice');
+  const [exploreHint, setExploreHint] = useState(false);
   const arrivalOpen = arrivalStage !== 'exploring';
   const audioEngineRef = useRef<DubTechnoEngine | null>(null);
   const audioAutoStartAttemptedRef = useRef(false);
@@ -2287,7 +2288,14 @@ export default function BlackHoleExperience() {
   const explore = () => {
     arrivalStageRef.current = 'exploring';
     setArrivalStage('exploring');
+    setExploreHint(true);
   };
+
+  useEffect(() => {
+    if (!exploreHint) return;
+    const timer = window.setTimeout(() => setExploreHint(false), 14000);
+    return () => window.clearTimeout(timer);
+  }, [exploreHint]);
 
   useEffect(() => {
     if (arrivalStage === 'exploring') {
@@ -2298,13 +2306,6 @@ export default function BlackHoleExperience() {
     const choices = panel?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
     choices?.[0]?.focus({ preventScroll: true });
     const onArrivalKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && arrivalStage === 'invitation') {
-        event.preventDefault();
-        event.stopPropagation();
-        arrivalStageRef.current = 'exploring';
-        setArrivalStage('exploring');
-        return;
-      }
       if (event.key !== 'Tab' || !choices?.length) return;
       const first = choices[0], last = choices[choices.length - 1];
       if (!panel?.contains(document.activeElement) || (event.shiftKey && document.activeElement === first)) {
@@ -2319,25 +2320,14 @@ export default function BlackHoleExperience() {
     return () => window.removeEventListener('keydown', onArrivalKey, true);
   }, [arrivalStage]);
 
-  const advanceGuide = () => {
-    if (guideStage === 'arrival') setGuideStage('wisdom');
-    else if (guideStage === 'wisdom') setGuideStage('question');
-    else if (guideStage === 'zero' || guideStage === 'one') {
-      guideChoiceRef.current?.(guideStage === 'zero' ? 0 : 1);
-    }
-  };
-
   useEffect(() => {
     if (guideStage === 'hidden') return;
     guidePanelRef.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
     const onGuideKey = (event: KeyboardEvent) => {
       if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (guideStage === 'question' && (event.key === '0' || event.key === '1')) {
+      if (event.key === '0' || event.key === '1') {
         event.preventDefault();
-        setGuideStage(event.key === '0' ? 'zero' : 'one');
-      } else if ((event.key === 'Enter' || event.key === ' ') && !(event.target as HTMLElement)?.closest('button')) {
-        event.preventDefault();
-        advanceGuide();
+        guideChoiceRef.current?.(event.key === '0' ? 0 : 1);
       }
     };
     window.addEventListener('keydown', onGuideKey);
@@ -3172,7 +3162,7 @@ export default function BlackHoleExperience() {
         ref={canvasRef}
         className="space-canvas"
         tabIndex={ascensionActive || arrivalOpen ? -1 : 0}
-        aria-label={ascensionActive ? 'A white cloud realm with a rainbow-chrome golden pyramid guide and your luminous chakra light body' : alternateRealityActive
+        aria-label={ascensionActive ? 'A white cloud realm with a golden pyramid and your luminous toroidal energy field in the foreground' : alternateRealityActive
           ? 'Interactive chrome portal realm floating above an ocean with a solid-black sphere'
           : 'Interactive three-dimensional view of a black hole and accretion disk'}
         aria-describedby={ascensionActive || arrivalOpen ? undefined : 'controls'}
@@ -3195,36 +3185,24 @@ export default function BlackHoleExperience() {
             aria-describedby="arrival-description"
           >
             <img className="arrival-brand" src="/qua-wordmark.svg" alt="QUA" width="572" height="234" />
-            {arrivalStage === 'choice' ? (
-              <>
-                <h1 id="arrival-title">Which way feels right?</h1>
-                <p id="arrival-description">A place to arrive. A little space to wander.</p>
+                <h1 id="arrival-title">Follow your curiosity.</h1>
+                <p id="arrival-description">A little wandering can lead somewhere unexpected.</p>
                 <div className="arrival-choices">
-                  <a className="arrival-choice arrival-choice--main" href={ORIGINAL_QUA_SITE_URL}>
-                    <span>Enter main site<small>Go straight to QUA.</small></span><span aria-hidden="true">↗</span>
-                  </a>
-                  <button type="button" className="arrival-choice" onClick={() => {
-                    arrivalStageRef.current = 'invitation';
-                    setArrivalStage('invitation');
-                  }}>
-                    <span>Find your center<small>Take the scenic way.</small></span><span aria-hidden="true">✧</span>
+                  <button type="button" className="arrival-choice arrival-choice--main" onClick={explore}>
+                    <span>Find your center</span><span aria-hidden="true">↗</span>
                   </button>
+                  <a className="arrival-direct" href={ORIGINAL_QUA_SITE_URL}>
+                    Enter main site <span aria-hidden="true">→</span>
+                  </a>
                 </div>
-              </>
-            ) : (
-              <>
-                <h1 id="arrival-title">Take your time.</h1>
-                <p id="arrival-description">Fly into the black hole, or wander among the stars. You might find something unexpected. Follow the center to the main site whenever you’re ready.</p>
-                <button type="button" className="arrival-choice arrival-choice--main" onClick={explore}>
-                  <span>Let me explore</span><span aria-hidden="true">↗</span>
-                </button>
-                <a className="arrival-direct" href={ORIGINAL_QUA_SITE_URL}>Or enter the main site now <span aria-hidden="true">↗</span></a>
-              </>
-            )}
           </section>
         </div>
       )}
 
+      {!arrivalOpen && !ascensionActive && <div className={`explore-whisper${exploreHint ? ' explore-whisper--visible' : ''}`}>
+        <p role="status">Drift a little. The center is a doorway.</p>
+        <a href={ORIGINAL_QUA_SITE_URL}>Enter main site <span aria-hidden="true">↗</span></a>
+      </div>}
 
       {!arrivalOpen && <div ref={musicDockRef} className="qua-music-dock">
         {musicMenuOpen && (
@@ -3369,41 +3347,15 @@ export default function BlackHoleExperience() {
           <span className="cosmic-dialogue__eyebrow">{GUIDE_DIALOGUE[guideStage].eyebrow}</span>
           <h1 id="guide-title">{GUIDE_DIALOGUE[guideStage].title}</h1>
           <p id="guide-speech" aria-live="polite">{GUIDE_DIALOGUE[guideStage].text}</p>
-          {guideStage === 'question' ? (
             <div className="cosmic-dialogue__choices">
-              <button type="button" onClick={() => setGuideStage('zero')}>
-                <strong>0</strong><span>Return to possibility<small>The black-hole beginning</small></span>
+              <button type="button" onClick={() => guideChoiceRef.current?.(0)}>
+                <strong>0</strong><span>Begin again<small>Back among the stars</small></span>
               </button>
-              <button type="button" onClick={() => setGuideStage('one')}>
-                <strong>1</strong><span>Step into form<small>Enter the red square</small></span>
+              <button type="button" onClick={() => guideChoiceRef.current?.(1)}>
+                <strong>1</strong><span>A little further<small>Into the next world</small></span>
               </button>
             </div>
-          ) : (
-            <button type="button" className="cosmic-dialogue__continue" onClick={advanceGuide}>
-              {GUIDE_DIALOGUE[guideStage].action}<span aria-hidden="true">↗</span>
-            </button>
-          )}
-          <div className="guide-steering" aria-label="Turn your light body">
-            <button type="button" aria-label="Twirl chakras left"
-              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); guideSteerRef.current = -1; }}
-              onPointerUp={() => { guideSteerRef.current = 0; }}
-              onPointerCancel={() => { guideSteerRef.current = 0; }}
-              onLostPointerCapture={() => { guideSteerRef.current = 0; }}
-              onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') guideSteerRef.current = -1; }}
-              onKeyUp={() => { guideSteerRef.current = 0; }}
-              onBlur={() => { guideSteerRef.current = 0; }}
-            >←</button>
-            <span>Drag or use ← → to turn your light</span>
-            <button type="button" aria-label="Twirl chakras right"
-              onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); guideSteerRef.current = 1; }}
-              onPointerUp={() => { guideSteerRef.current = 0; }}
-              onPointerCancel={() => { guideSteerRef.current = 0; }}
-              onLostPointerCapture={() => { guideSteerRef.current = 0; }}
-              onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') guideSteerRef.current = 1; }}
-              onKeyUp={() => { guideSteerRef.current = 0; }}
-              onBlur={() => { guideSteerRef.current = 0; }}
-            >→</button>
-          </div>
+          <p className="guide-turn-hint">Drag or use ← → to turn your light.</p>
         </section>
       )}
 
