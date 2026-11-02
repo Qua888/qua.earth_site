@@ -98,38 +98,100 @@ export function createCosmicGuide() {
   const avatar = new THREE.Group();
   avatar.name = 'traveller-light-body';
   scene.add(avatar);
-  const auraGeometry = new THREE.PlaneGeometry(1.9, 3.05);
+  // One real ellipsoid replaces the old camera-facing aura card. Its rim
+  // changes with viewing angle, and the body inside has actual depth.
+  const auraGeometry = new THREE.SphereGeometry(1, 24, 16);
+  auraGeometry.scale(0.63, 1.34, 0.43);
+  auraGeometry.translate(0, -0.03, 0);
   const auraUniforms = { uOpacity: { value: 0 }, uTurn: { value: 0 } };
   const auraMaterial = new THREE.ShaderMaterial({
     uniforms: auraUniforms, transparent: true, depthWrite: false,
-    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      varying vec2 vUv; uniform float uOpacity; uniform float uTurn;
-      float segment(vec2 p, vec2 a, vec2 b) {
-        vec2 q = p - a; vec2 d = b - a;
-        return length(q - d * clamp(dot(q, d) / dot(d, d), 0.0, 1.0));
-      }
+    vertexShader: `
+      varying vec3 vNormal; varying vec3 vView; varying vec3 vLocal;
       void main() {
-        vec2 p = vUv * 2.0 - 1.0;
-        float d = length(p * vec2(1.25, 0.95));
-        float shell = exp(-pow((d - 0.80) / 0.13, 2.0));
-        float inner = exp(-pow((d - 0.60) / 0.17, 2.0));
-        vec3 spectrum = 0.55 + 0.45 * cos(vec3(0.0, 2.1, 4.2) + d * 25.0 + uTurn * 0.18);
-        float spine = exp(-pow(p.x / 0.08, 2.0)) * smoothstep(-0.9, 0.5, p.y);
-        float head = exp(-dot((p - vec2(0.0, 0.63)) * vec2(6.5, 9.0),
-          (p - vec2(0.0, 0.63)) * vec2(6.5, 9.0)));
-        float body = min(segment(p, vec2(0.0, 0.36), vec2(0.0, -0.35)),
-          min(segment(p, vec2(-0.12, 0.28), vec2(-0.3, -0.2)), segment(p, vec2(0.12, 0.28), vec2(0.3, -0.2))));
-        body = min(body, min(segment(p, vec2(-0.03, -0.31), vec2(-0.15, -0.78)),
-          segment(p, vec2(0.03, -0.31), vec2(0.15, -0.78))));
-        float outline = exp(-body * 85.0);
-        float alpha = (shell * 0.19 + inner * 0.09 + spine * 0.035 + head * 0.15 + outline * 0.12) * uOpacity;
-        vec3 color = mix(vec3(0.83, 0.73, 0.98), spectrum, shell * 0.75);
-        gl_FragColor = vec4(color, alpha);
+        vNormal = normalize(normalMatrix * normal); vLocal = position;
+        vec4 p = modelViewMatrix * vec4(position, 1.0); vView = -p.xyz;
+        gl_Position = projectionMatrix * p;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vNormal; varying vec3 vView; varying vec3 vLocal;
+      uniform float uOpacity; uniform float uTurn;
+      void main() {
+        float rim = pow(1.0 - max(dot(normalize(vNormal), normalize(vView)), 0.0), 2.4);
+        vec3 spectrum = 0.58 + 0.32 * cos(vec3(0.0, 2.1, 4.2)
+          + vLocal.y * 2.4 + vLocal.z * 4.0 + uTurn * 0.12);
+        vec3 color = mix(vec3(0.79, 0.72, 0.91), spectrum, 0.72);
+        gl_FragColor = vec4(color, (0.012 + rim * 0.27) * uOpacity);
       }
     `,
   });
-  avatar.add(new THREE.Mesh(auraGeometry, auraMaterial));
+  const aura = new THREE.Mesh(auraGeometry, auraMaterial);
+  aura.name = 'volumetric-aura';
+  aura.renderOrder = 1;
+  avatar.add(aura);
+
+  // Merge the little rounded anatomical forms once: one body draw, no
+  // skeletal animation, shadows, lighting rig, or per-frame mesh allocation.
+  const bodyParts: THREE.BufferGeometry[] = [];
+  const addEllipsoid = (x: number, y: number, z: number, sx: number, sy: number, sz: number) => {
+    const part = new THREE.SphereGeometry(1, 12, 8);
+    part.scale(sx, sy, sz); part.translate(x, y, z); bodyParts.push(part);
+  };
+  const addLimb = (from: THREE.Vector3, to: THREE.Vector3, top: number, bottom: number) => {
+    const direction = to.clone().sub(from);
+    const part = new THREE.CylinderGeometry(top, bottom, direction.length(), 8, 1);
+    part.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize()));
+    part.translate((from.x + to.x) / 2, (from.y + to.y) / 2, (from.z + to.z) / 2);
+    bodyParts.push(part);
+  };
+  addEllipsoid(0, 0.97, 0, 0.112, 0.143, 0.105);
+  addEllipsoid(0, 0.22, 0, 0.125, 0.35, 0.085);
+  addEllipsoid(0, -0.28, 0, 0.13, 0.15, 0.09);
+  addLimb(new THREE.Vector3(0, 0.50, 0), new THREE.Vector3(0, 0.83, 0), 0.035, 0.041);
+  addLimb(new THREE.Vector3(0, -0.30, 0), new THREE.Vector3(0, 0.17, 0), 0.09, 0.10);
+  for (const side of [-1, 1]) {
+    addLimb(new THREE.Vector3(side * 0.28, -0.31, 0.035), new THREE.Vector3(side * 0.12, 0.43, 0), 0.038, 0.022);
+    addLimb(new THREE.Vector3(side * 0.16, -1.14, 0.015), new THREE.Vector3(side * 0.063, -0.34, 0), 0.047, 0.025);
+  }
+  const bodyPositions: number[] = [], bodyNormals: number[] = [];
+  for (const part of bodyParts) {
+    const triangles = part.toNonIndexed();
+    bodyPositions.push(...Array.from(triangles.getAttribute('position').array));
+    bodyNormals.push(...Array.from(triangles.getAttribute('normal').array));
+    triangles.dispose(); part.dispose();
+  }
+  const bodyGeometry = new THREE.BufferGeometry();
+  bodyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(bodyPositions, 3));
+  bodyGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(bodyNormals, 3));
+  const bodyMaterial = new THREE.ShaderMaterial({
+    uniforms: auraUniforms, transparent: true, depthWrite: true,
+    vertexShader: `
+      varying vec3 vNormal; varying vec3 vView; varying float vHeight;
+      void main() {
+        vNormal = normalize(normalMatrix * normal); vHeight = position.y;
+        vec4 p = modelViewMatrix * vec4(position, 1.0); vView = -p.xyz;
+        gl_Position = projectionMatrix * p;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vNormal; varying vec3 vView; varying float vHeight;
+      uniform float uOpacity;
+      void main() {
+        vec3 n = normalize(vNormal);
+        float facing = max(dot(n, normalize(vView)), 0.0);
+        float light = 0.5 + 0.5 * dot(n, normalize(vec3(-0.5, 0.7, 1.0)));
+        vec3 pearl = mix(vec3(0.58, 0.48, 0.73), vec3(0.96, 0.93, 1.0), light);
+        vec3 spectrum = 0.65 + 0.28 * cos(vec3(0.0, 2.1, 4.2) + vHeight * 3.7 + n.z * 0.5);
+        float glint = pow(max(dot(n, normalize(vec3(-0.3, 0.65, 1.0))), 0.0), 24.0);
+        vec3 color = mix(pearl, spectrum, 0.24) + glint * 0.22;
+        gl_FragColor = vec4(color, (0.38 + (1.0 - facing) * 0.26) * uOpacity);
+      }
+    `,
+  });
+  const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+  body.name = 'dimensional-light-body';
+  avatar.add(body);
   const lightGeometry = new THREE.BufferGeometry();
   const lightPositions = new Float32Array(23 * 3);
   const lightColors = new Float32Array(23 * 3);
@@ -169,6 +231,8 @@ export function createCosmicGuide() {
   });
   const lights = new THREE.Points(lightGeometry, lightMaterial);
   lights.frustumCulled = false;
+  lights.name = 'chakra-lights';
+  lights.renderOrder = 2;
   avatar.add(lights);
   let compactLandscape = false;
 
@@ -181,8 +245,8 @@ export function createCosmicGuide() {
       const portrait = camera.aspect < 0.7;
       guide.scale.setScalar(compactLandscape ? 0.65 : portrait ? 0.45 : 0.94);
       guide.position.x = compactLandscape ? -1.8 : portrait ? -0.35 : -1.18;
-      avatar.scale.setScalar(compactLandscape ? 0.55 : portrait ? 0.50 : 0.86);
-      avatar.position.set(compactLandscape ? 0.6 : portrait ? 0.48 : 1.4, portrait ? 0.25 : -0.05, 0.7);
+      avatar.scale.setScalar(compactLandscape ? 0.55 : portrait ? 0.46 : 0.86);
+      avatar.position.set(compactLandscape ? -0.65 : portrait ? 0.48 : 1.4, compactLandscape ? 0.18 : portrait ? 0.62 : -0.05, 0.7);
       lightUniforms.uHeight.value = height;
     },
     update(time: number, opacity: number, reducedMotion: boolean, avatarTurn = 0) {
@@ -193,11 +257,12 @@ export function createCosmicGuide() {
       guide.rotation.set(0.06, reducedMotion ? 0.35 : 0.35 + time * 0.045, 0.0);
       auraUniforms.uOpacity.value = opacity;
       auraUniforms.uTurn.value = avatarTurn;
+      avatar.rotation.y = avatarTurn + (reducedMotion ? 0.26 : 0.26 + time * 0.027);
       lightUniforms.uOpacity.value = opacity;
       lightPositions.set([0, 0.99, 0.06, 0, 0.99, 0.08]);
       for (let i = 0; i < 7; i++) {
         const y = 0.79 - i * 0.255;
-        const phase = avatarTurn + i * 0.44;
+        const phase = avatarTurn * 0.18 + i * 0.44;
         const radius = 0.18 + Math.sin(i * 0.5) * 0.045;
         const index = (2 + i * 3) * 3;
         lightPositions.set([Math.sin(phase) * 0.025, y, 0.1], index);
@@ -208,6 +273,7 @@ export function createCosmicGuide() {
     },
     dispose() {
       geometry.dispose(); material.dispose(); auraGeometry.dispose(); auraMaterial.dispose();
+      bodyGeometry.dispose(); bodyMaterial.dispose();
       lightGeometry.dispose(); lightMaterial.dispose();
     },
   };

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { COSMIC_ZOOM_GAIN, PINCH_MIN_DISTANCE, pinchZoomTarget } from './cosmic-navigation';
 import {
   ASCENSION_DURATION, ASCENSION_START, GUIDE_DIALOGUE,
   cloudRealmShader, createCosmicGuide,
@@ -54,6 +55,7 @@ const fragmentShader = /* glsl */ `
   uniform float uMacroZoom;
   uniform float uAscension;
   uniform float uCloudRealm;
+  uniform float uMatrixDepth;
 
   #define STEPS 58
   const float WATER_Y = -80.0;
@@ -1043,7 +1045,9 @@ const fragmentShader = /* glsl */ `
           vec3 c = cell * 2.65 * (1.0 - gathering);
           vec3 oc = origin - c;
           float b = dot(oc, ray);
-          float d = b * b - dot(oc, oc) + sphereRadius * sphereRadius;
+          // Avoid subtracting large squared distances on mobile GPUs.
+          vec3 closest = oc - ray * b;
+          float d = sphereRadius * sphereRadius - dot(closest, closest);
           if (d < 0.0) continue;
           float root = sqrt(d);
           float t = -b - root;
@@ -1122,6 +1126,7 @@ const fragmentShader = /* glsl */ `
     vec3 childOrigin = (origin - center) * 6.85410196625;
     float weight = 0.94;
     for (int depth = 0; depth < 3; depth++) {
+      if (float(depth) >= uMatrixDepth) break;
       float childGeneration = generation - float(depth) - 1.0;
       if (childGeneration < 0.0) break;
       t = matrixSphereHit(childOrigin, ray, center, id);
@@ -2464,6 +2469,7 @@ export default function BlackHoleExperience() {
       uMacroZoom: { value: 0 },
       uAscension: { value: 0 },
       uCloudRealm: { value: 0 },
+      uMatrixDepth: { value: coarsePointer ? 2 : 3 },
     };
     const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms, depthTest: false, depthWrite: false });
     scene.add(new THREE.Mesh(geometry, material));
@@ -2518,7 +2524,7 @@ export default function BlackHoleExperience() {
     let dragging = false;
     let lastPointerX = 0;
     let lastPointerY = 0;
-    let lastPinchDistance = 0;
+    let pinchAnchor: { distance: number; target: number; alternate: boolean } | null = null;
     const touchPointers = new Map<number, { x: number; y: number }>();
     let visible = !document.hidden;
     let lastFrameTime = performance.now();
@@ -2616,14 +2622,18 @@ export default function BlackHoleExperience() {
           x: event.clientX,
           y: event.clientY,
         });
-        if (touchPointers.size === 2) {
+        if (touchPointers.size >= 2) {
           gestureMask = 0;
           syncMovement();
           const points = [...touchPointers.values()];
-          lastPinchDistance = Math.hypot(
+          const distance = Math.hypot(
             points[0].x - points[1].x,
             points[0].y - points[1].y,
           );
+          pinchAnchor = distance >= PINCH_MIN_DISTANCE ? {
+            distance, target: realityPhase === 'alternate' ? targetAlternateDistance : targetRadius,
+            alternate: realityPhase === 'alternate',
+          } : null;
         }
       }
       try {
@@ -2643,7 +2653,7 @@ export default function BlackHoleExperience() {
         if (touchPointers.has(event.pointerId)) {
           touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
         }
-        lastPinchDistance = 0;
+        pinchAnchor = null;
         return;
       }
 
@@ -2661,23 +2671,26 @@ export default function BlackHoleExperience() {
             points[0].x - points[1].x,
             points[0].y - points[1].y,
           );
-          if (lastPinchDistance > 0 && pinchDistance > 0) {
-            const pinchRatio = THREE.MathUtils.clamp(
-              pinchDistance / lastPinchDistance,
-              0.85,
-              1.15,
-            );
-            const travelScale = Math.pow(pinchRatio, 1.15);
-            if (Math.abs(pinchRatio - 1) > 0.001) {
-              playGesture(pinchRatio > 1 ? MUSIC_LAYERS.dub : MUSIC_LAYERS.clap);
-            }
-            if (realityPhase === 'alternate') {
-              targetAlternateDistance /= travelScale;
-            } else if (realityPhase === 'cosmic') {
-              targetRadius /= travelScale;
-            }
+          if (pinchDistance < PINCH_MIN_DISTANCE) return;
+          if (!pinchAnchor) {
+            pinchAnchor = { distance: pinchDistance,
+              target: realityPhase === 'alternate' ? targetAlternateDistance : targetRadius,
+              alternate: realityPhase === 'alternate' };
           }
-          lastPinchDistance = pinchDistance;
+          const previous = pinchAnchor.alternate ? targetAlternateDistance : targetRadius;
+          const requested = pinchZoomTarget(pinchAnchor.distance, pinchAnchor.target, pinchDistance,
+            pinchAnchor.alternate ? 1 : COSMIC_ZOOM_GAIN);
+          const next = THREE.MathUtils.clamp(requested,
+            pinchAnchor.alternate ? alternateCrossDistance : cosmicMinRadius,
+            pinchAnchor.alternate ? alternateMaxDistance : cosmicMaxRadius);
+          if (Math.abs(Math.log(next / previous)) > 0.001) {
+            playGesture(next < previous ? MUSIC_LAYERS.dub : MUSIC_LAYERS.clap);
+          }
+          if (pinchAnchor.alternate) targetAlternateDistance = next;
+          else targetRadius = next;
+          // Reverse immediately at an endpoint instead of retaining hidden
+          // overshoot that makes a phone pinch feel stuck.
+          if (next !== requested) pinchAnchor = { ...pinchAnchor, distance: pinchDistance, target: next };
           markInteraction();
           return;
         }
@@ -2706,7 +2719,7 @@ export default function BlackHoleExperience() {
     const onCanvasPointerUp = (event: PointerEvent) => {
       if (event.pointerType === 'touch') {
         touchPointers.delete(event.pointerId);
-        lastPinchDistance = 0;
+        pinchAnchor = null;
         const remainingPoint = touchPointers.values().next().value;
         if (remainingPoint) {
           lastPointerX = remainingPoint.x;
@@ -2776,7 +2789,7 @@ export default function BlackHoleExperience() {
       markInteraction();
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1;
       const travel = THREE.MathUtils.clamp(event.deltaY * units * 0.0018, -0.42, 0.42);
-      if (realityPhase === 'cosmic') targetRadius *= Math.exp(travel);
+      if (realityPhase === 'cosmic') targetRadius *= Math.exp(travel * COSMIC_ZOOM_GAIN);
       else targetAlternateDistance *= Math.exp(travel);
       playGesture(travel > 0 ? MUSIC_LAYERS.clap : MUSIC_LAYERS.dub);
     };
@@ -2785,7 +2798,7 @@ export default function BlackHoleExperience() {
       guideDragRef.current = null;
       keys.clear();
       touchPointers.clear();
-      lastPinchDistance = 0;
+      pinchAnchor = null;
       dragging = false;
       gestureMask = 0;
       gestureUntil = 0;
@@ -2948,8 +2961,8 @@ export default function BlackHoleExperience() {
       const zoomIn = keys.has('w') && !keys.has('s') && !suppressZoomUntilKeyUp;
       const zoomOut = keys.has('s') && !keys.has('w');
       if (realityPhase === 'cosmic') {
-        if (zoomIn) targetRadius *= Math.exp(-delta * 0.5 * boost);
-        if (zoomOut) targetRadius *= Math.exp(delta * 0.5 * boost);
+        if (zoomIn) targetRadius *= Math.exp(-delta * 0.5 * boost * COSMIC_ZOOM_GAIN);
+        if (zoomOut) targetRadius *= Math.exp(delta * 0.5 * boost * COSMIC_ZOOM_GAIN);
       } else if (realityPhase === 'alternate') {
         if (zoomIn) targetAlternateDistance *= Math.exp(-delta * 0.52 * boost);
         if (zoomOut) targetAlternateDistance *= Math.exp(delta * 0.52 * boost);
