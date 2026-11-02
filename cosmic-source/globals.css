@@ -456,3 +456,100 @@ body {
   .music-guide { display: none; }
   .controls { padding-top: 8px; padding-bottom: 8px; }
 }
+
+
+/* Arrival choices sit over the live black hole; the scene keeps its own motion. */
+.arrival-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow-y: auto;
+  padding: max(24px, 6vh) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom));
+  background: linear-gradient(0deg, rgba(0, 0, 0, .55), transparent 72%);
+  overscroll-behavior: contain;
+}
+.arrival-panel {
+  width: min(470px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 25px 28px 24px;
+  color: #f5e9e0;
+  border: 1px solid rgba(241, 210, 201, .24);
+  border-radius: 4px 24px 4px 24px;
+  background: linear-gradient(140deg, rgba(30, 17, 34, .7), rgba(9, 8, 16, .8));
+  box-shadow: 0 12px 50px rgba(0, 0, 0, .22), inset 0 1px rgba(255, 240, 230, .035);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: arrival-appear 450ms ease both;
+}
+.arrival-brand {
+  display: block;
+  width: 104px;
+  height: auto;
+  color: #e9b69f;
+  font: 400 20px/1 Georgia, 'Times New Roman', serif;
+  letter-spacing: .22em;
+  margin-bottom: 13px;
+}
+.arrival-panel h1 {
+  margin: 0 0 10px;
+  font: 400 clamp(25px, 3.2vw, 31px)/1.12 Georgia, 'Times New Roman', serif;
+  letter-spacing: -.025em;
+}
+.arrival-panel p {
+  margin: 0 0 20px;
+  color: #c6b5c5;
+  font: 400 14px/1.65 Georgia, 'Times New Roman', serif;
+  max-width: 44ch;
+}
+.arrival-choices { display: grid; gap: 9px; }
+.arrival-choice {
+  display: flex;
+  width: 100%;
+  min-height: 57px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 16px;
+  border: 1px solid rgba(236, 200, 221, .22);
+  border-radius: 4px;
+  background: rgba(42, 27, 48, .4);
+  color: #eee1ee;
+  font: 400 12px/1.4 'SFMono-Regular', Consolas, monospace;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+.arrival-choice--main { background: rgba(125, 73, 90, .2); border-color: rgba(237, 182, 160, .5); color: #ffe7d5; }
+.arrival-choice small { display: block; margin-top: 4px; font: 400 12px/1.4 Georgia, serif; color: #b5a0b7; }
+.arrival-choice > span:last-child { font: 400 20px/1 Georgia, serif; color: #dbabca; }
+.arrival-choice:hover { background: rgba(113, 68, 117, .25); border-color: rgba(237, 182, 216, .65); }
+.arrival-choice:focus-visible, .arrival-direct:focus-visible { outline: 2px solid #eabde0; outline-offset: 4px; }
+.arrival-direct { display: inline-block; margin-top: 16px; padding: 3px 0; color: #bda8bf; font: 400 11px/1.5 Georgia, serif; text-decoration: none; }
+.arrival-direct:hover { color: #f3dce8; }
+.arrival-direct span { margin-left: 8px; }
+@keyframes arrival-appear { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
+@media (max-width: 540px) {
+  .arrival-layer { padding: 16px max(16px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)); }
+  .arrival-panel { padding: 21px 21px 20px; max-height: calc(100dvh - 34px); }
+  .arrival-panel p { font-size: 14px; line-height: 1.55; }
+  .arrival-choice { min-height: 60px; font-size: 12px; }
+}
+@media (max-height: 540px) and (orientation: landscape) {
+  .arrival-layer { justify-content: flex-end; align-items: center; padding: 14px max(20px, env(safe-area-inset-right)); }
+  .arrival-panel { width: min(410px, 53vw); max-height: calc(100dvh - 28px); padding: 18px 21px; }
+  .arrival-brand { font-size: 17px; margin-bottom: 10px; }
+  .arrival-panel h1 { font-size: 25px; }
+  .arrival-panel p { font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+  .arrival-choice { min-height: 48px; padding: 9px 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arrival-panel { animation: none; }
+  .arrival-choice { transition: none; }
+}

@@ -2252,8 +2252,14 @@ function QuaOrb({ active }: QuaOrbProps) {
   );
 }
 
+type ArrivalStage = 'choice' | 'invitation' | 'exploring';
+
 export default function BlackHoleExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const arrivalPanelRef = useRef<HTMLElement>(null);
+  const arrivalStageRef = useRef<ArrivalStage>('choice');
+  const [arrivalStage, setArrivalStage] = useState<ArrivalStage>('choice');
+  const arrivalOpen = arrivalStage !== 'exploring';
   const audioEngineRef = useRef<DubTechnoEngine | null>(null);
   const audioAutoStartAttemptedRef = useRef(false);
   const audioWantedRef = useRef(false);
@@ -2272,6 +2278,41 @@ export default function BlackHoleExperience() {
   const [ascensionActive, setAscensionActive] = useState(false);
   const [guideStage, setGuideStage] = useState<GuideStage>('hidden');
   const [musicMenuOpen, setMusicMenuOpen] = useState(false);
+
+  const explore = () => {
+    arrivalStageRef.current = 'exploring';
+    setArrivalStage('exploring');
+  };
+
+  useEffect(() => {
+    if (arrivalStage === 'exploring') {
+      canvasRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    const panel = arrivalPanelRef.current;
+    const choices = panel?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])');
+    choices?.[0]?.focus({ preventScroll: true });
+    const onArrivalKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && arrivalStage === 'invitation') {
+        event.preventDefault();
+        event.stopPropagation();
+        arrivalStageRef.current = 'exploring';
+        setArrivalStage('exploring');
+        return;
+      }
+      if (event.key !== 'Tab' || !choices?.length) return;
+      const first = choices[0], last = choices[choices.length - 1];
+      if (!panel?.contains(document.activeElement) || (event.shiftKey && document.activeElement === first)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onArrivalKey, true);
+    return () => window.removeEventListener('keydown', onArrivalKey, true);
+  }, [arrivalStage]);
 
   const advanceGuide = () => {
     if (guideStage === 'arrival') setGuideStage('wisdom');
@@ -2538,6 +2579,7 @@ export default function BlackHoleExperience() {
     };
 
     const onPointerMove = (event: MouseEvent) => {
+      if (arrivalStageRef.current !== 'exploring') return;
       if (document.pointerLockElement !== canvas) return;
       if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       if (event.movementX !== 0 || event.movementY !== 0) markInteraction();
@@ -2559,6 +2601,7 @@ export default function BlackHoleExperience() {
     };
 
     const onCanvasPointerDown = (event: PointerEvent) => {
+      if (arrivalStageRef.current !== 'exploring') return;
       if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       if (document.pointerLockElement === canvas) return;
       if (event.pointerType === 'mouse' && event.button !== 0) return;
@@ -2591,6 +2634,7 @@ export default function BlackHoleExperience() {
     };
 
     const onCanvasPointerMove = (event: PointerEvent) => {
+      if (arrivalStageRef.current !== 'exploring') return;
       if (!dragging || document.pointerLockElement === canvas) return;
       if (event.cancelable) event.preventDefault();
       if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') {
@@ -2686,6 +2730,7 @@ export default function BlackHoleExperience() {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (arrivalStageRef.current !== 'exploring') return;
       const target = event.target as HTMLElement | null;
       if (realityPhase === 'guide') {
         if (target?.closest('.qua-music-dock') || target?.matches('input, textarea, select')) return;
@@ -2725,6 +2770,7 @@ export default function BlackHoleExperience() {
       if (key === 'w') suppressZoomUntilKeyUp = false;
     };
     const onCosmicWheel = (event: WheelEvent) => {
+      if (arrivalStageRef.current !== 'exploring') return;
       if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
       event.preventDefault();
       markInteraction();
@@ -3088,7 +3134,7 @@ export default function BlackHoleExperience() {
   }, []);
 
   const enter = () => {
-    if (ascensionActive) return;
+    if (ascensionActive || arrivalStageRef.current !== 'exploring') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.focus({ preventScroll: true });
@@ -3112,20 +3158,62 @@ export default function BlackHoleExperience() {
       <canvas
         ref={canvasRef}
         className="space-canvas"
-        tabIndex={ascensionActive ? -1 : 0}
+        tabIndex={ascensionActive || arrivalOpen ? -1 : 0}
         aria-label={ascensionActive ? 'A white cloud realm with a rainbow-chrome golden pyramid guide and your luminous chakra light body' : alternateRealityActive
           ? 'Interactive chrome portal realm floating above an ocean with a solid-black sphere'
           : 'Interactive three-dimensional view of a black hole and accretion disk'}
-        aria-describedby={ascensionActive ? undefined : 'controls'}
-        aria-hidden={guideStage !== 'hidden'}
-        style={ascensionActive ? { pointerEvents: 'none' } : undefined}
-        onPointerDown={unlockAudio}
+        aria-describedby={ascensionActive || arrivalOpen ? undefined : 'controls'}
+        aria-hidden={arrivalOpen || guideStage !== 'hidden'}
+        style={ascensionActive || arrivalOpen ? { pointerEvents: 'none' } : undefined}
+        onPointerDown={arrivalOpen ? undefined : unlockAudio}
         onClick={enter}
       />
 
       {!supported && <div className="fallback" role="alert">This browser cannot render the live space.</div>}
 
-      <div ref={musicDockRef} className="qua-music-dock">
+      {arrivalOpen && (
+        <div className="arrival-layer">
+          <section
+            ref={arrivalPanelRef}
+            className={`arrival-panel arrival-panel--${arrivalStage}`}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="arrival-title"
+            aria-describedby="arrival-description"
+          >
+            <img className="arrival-brand" src="/qua-wordmark.svg" alt="QUA" width="572" height="234" />
+            {arrivalStage === 'choice' ? (
+              <>
+                <h1 id="arrival-title">Which way feels right?</h1>
+                <p id="arrival-description">A place to arrive. A little space to wander.</p>
+                <div className="arrival-choices">
+                  <a className="arrival-choice arrival-choice--main" href={ORIGINAL_QUA_SITE_URL}>
+                    <span>Enter main site<small>Go straight to QUA.</small></span><span aria-hidden="true">↗</span>
+                  </a>
+                  <button type="button" className="arrival-choice" onClick={() => {
+                    arrivalStageRef.current = 'invitation';
+                    setArrivalStage('invitation');
+                  }}>
+                    <span>Find your center<small>Take the scenic way.</small></span><span aria-hidden="true">✧</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h1 id="arrival-title">Take your time.</h1>
+                <p id="arrival-description">Fly into the black hole, or wander among the stars. You might find something unexpected. Follow the center to the main site whenever you’re ready.</p>
+                <button type="button" className="arrival-choice arrival-choice--main" onClick={explore}>
+                  <span>Let me explore</span><span aria-hidden="true">↗</span>
+                </button>
+                <a className="arrival-direct" href={ORIGINAL_QUA_SITE_URL}>Or enter the main site now <span aria-hidden="true">↗</span></a>
+              </>
+            )}
+          </section>
+        </div>
+      )}
+
+
+      {!arrivalOpen && <div ref={musicDockRef} className="qua-music-dock">
         {musicMenuOpen && (
           <div id="qua-music-menu" className="qua-music-menu" role="group" aria-label="Music playback">
             <span>QUA · SOUND</span>
@@ -3153,9 +3241,9 @@ export default function BlackHoleExperience() {
             setMusicMenuOpen(!musicMenuOpen);
           }}
         ><QuaOrb active={false} /></button>
-      </div>
+      </div>}
 
-      {!ascensionActive && <div className="hud-stack">
+      {!arrivalOpen && !ascensionActive && <div className="hud-stack">
         <aside id="controls" className={`controls ${active ? 'controls--active' : ''}`} aria-label="Experience controls">
           <div className="controls-heading">
             <span className="status-dot" />
@@ -3306,7 +3394,7 @@ export default function BlackHoleExperience() {
         </section>
       )}
 
-      <p className="sr-only" aria-live="polite">
+      <p className="sr-only" aria-live="polite" aria-hidden={arrivalOpen}>
         {ascensionActive
           ? 'Beyond the last star. Meet the golden guide and choose a path.'
           : alternateRealityActive

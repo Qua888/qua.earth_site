@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 572 234" role="img" aria-labelledby="qua-title qua-description">
+  <title id="qua-title">QUA</title>
+  <desc id="qua-description">Sculpted sunset lettering with a circular Q opening and a downward equilateral triangle.</desc>
+  <defs>
+    <linearGradient id="qua-ink" x1="0" y1="4" x2="0" y2="226" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffb565"/>
+      <stop offset=".46" stop-color="#f56b4d"/>
+      <stop offset=".77" stop-color="#db4769"/>
+      <stop offset="1" stop-color="#96365f"/>
+    </linearGradient>
+    <g id="qua-letters" fill-rule="evenodd">
+      <path d="M4 10H186V192H4ZM156 101A61 61 0 1 0 34 101A61 61 0 1 0 156 101Z"/>
+      <path d="M136 192H176L156 226.6410161514Z"/>
+      <path d="M207 10H251V108A40 40 0 0 0 331 108V10H375V192H207Z"/>
+      <path d="M475 8L566 192H384ZM467 154A27 27 0 1 1 483 154V192H467Z"/>
+    </g>
+  </defs>
+  <use href="#qua-letters" fill="#672447" opacity=".7" transform="translate(0 4)"/>
+  <use href="#qua-letters" fill="url(#qua-ink)"/>
+</svg>
