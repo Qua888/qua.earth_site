@@ -2,7 +2,8 @@
   "name": "qua-earth",
   "private": true,
   "scripts": {
-    "build": "vite build --config cosmic-source/vite.config.ts"
+    "build": "vite build --config cosmic-source/vite.config.ts",
+    "build:lake": "vite build --config lake-source/vite.config.js"
   },
   "dependencies": {
     "@types/three": "^0.185.4",

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090711">
+  <meta name="description" content="A QUA listening-room experiment. Wander a shallow rainbow lake and stir three restless particle worlds.">
+  <title>The chromatic lake · QUA</title>
+  <script type="module" crossorigin src="./assets/index-BtADFWTL.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CgsycNnx.css">
+</head>
+<body>
+  <main id="room" aria-label="The chromatic lake, an interactive QUA listening room">
+    <canvas id="lake" tabindex="0" aria-label="Walkable rainbow lake with three floating particle spheres. Move with WASD or arrow keys; drag to look around; move your pointer near the spheres to stir their particles." aria-describedby="instructions"></canvas>
+    <header class="room-top">
+      <a class="qua-signature" href="../track2.html" aria-label="QUA · return to Sphere Chamber"><img src="/qua-wordmark.svg" alt="QUA" width="572" height="234"></a>
+      <div class="room-title"><span>A LISTENING ROOM IN THE MAKING</span><h1>The chromatic lake.</h1></div>
+      <a class="room-back" href="../track2.html">Sphere chamber <span aria-hidden="true">↗</span></a>
+    </header>
+    <div class="room-whisper" id="welcome"><p>Three little worlds.<br>A little room to wander.</p><span>Move your pointer through the light.</span></div>
+    <footer class="room-bottom">
+      <p id="instructions"><span class="desktop-instructions">WASD / arrows <i>float</i> <b>·</b> drag <i>look</i> <b>·</b> wheel <i>closer</i></span><span class="touch-instructions">Left circle to float <b>·</b> drag elsewhere to look</span></p>
+      <div class="room-tools"><button id="recenter" type="button" title="Return to the limestone">Back to the stone <span aria-hidden="true">⟲</span></button><button id="fullscreen" type="button" aria-pressed="false">Full screen <span aria-hidden="true">⤢</span></button></div>
+    </footer>
+    <div class="move-pad" id="movePad" role="group" aria-label="Touch movement joystick"><i id="moveThumb"></i><span>FLOAT</span></div>
+    <p class="scene-error" id="sceneError" hidden role="alert">This space needs WebGL. Try another browser to enter the lake.</p>
+    <p class="sr-only" id="status" aria-live="polite">You are on a limestone rock beside a shallow rainbow lake. There is no audio in this room yet.</p>
+  </main>
+</body>
+</html>
