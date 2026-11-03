@@ -10,7 +10,8 @@ const STEP = 1 / 120;
 const POINTER_GAIN = 1.2;
 const TAU = Math.PI * 2;
 const BUBBLE_BOUNDARY = 13.1;
-const CONTACT_SPEED_LIMIT = 0.88;
+const CONTACT_SPEED_LIMIT = 1.45;
+const DRIFT_SPEED = 0.65;
 
 function capVelocity(velocity, maximum) {
   const speed = velocity.length();
@@ -36,8 +37,8 @@ function stirBubble(center, velocity, traveller, dt) {
   // A cushion begins before contact, then yields softly to the little light
   // traveller. Acceleration and speed are bounded even if it flies through.
   const penetration = Math.max(0, surface - distance);
-  const acceleration = Math.min(1.1, proximity * proximity * 0.42
-    + approach * proximity * 0.20 + penetration * 0.16);
+  const acceleration = Math.min(1.4, proximity * proximity * 0.50
+    + approach * proximity * 0.30 + penetration * 0.22);
   velocity.x += dx * acceleration * dt;
   velocity.y += dy * acceleration * dt;
   velocity.z += dz * acceleration * dt;
@@ -72,7 +73,7 @@ function driftBubbles(centers, velocities, dt, age, traveller, reducedMotion) {
     }
     const touching = stirBubble(center, velocity, traveller, dt);
     const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
-    const driftSpeed = reducedMotion ? 0 : 0.32;
+    const driftSpeed = reducedMotion ? 0 : DRIFT_SPEED;
     if (!touching && speed > driftSpeed) {
       const settlingSpeed = driftSpeed + (speed - driftSpeed) * Math.exp(-dt * 0.55);
       velocity.multiplyScalar(settlingSpeed / speed);
@@ -221,6 +222,7 @@ function toroidalTarget(radius, phase, azimuth, out) {
   out[1] = radius * 0.90 * sine;
   out[2] = radial * sp;
   out[3] = cp; out[4] = sp;
+  out[5] = cosine; out[6] = sine;
 }
 
 function makeField(count, isRing, index, lowPower) {
@@ -237,11 +239,12 @@ function makeField(count, isRing, index, lowPower) {
   const height = new Float32Array(count);
   const phases = new Float32Array(count);
   const flowPhase = new Float32Array(count);
+  // Lagrangian edit memory: each particle carries its carved displacement in
+  // its own rotating toroidal frame. No relaxation clock erases this shape.
+  const deformation = new Float32Array(count * 3);
   const laneCount = lowPower ? 18 : 24;
   const laneAngles = new Float64Array(laneCount);
-  const laneCosines = new Float64Array(laneCount);
-  const laneSines = new Float64Array(laneCount);
-  const targetBefore = new Float64Array(5), targetAfter = new Float64Array(5);
+  const targetBefore = new Float64Array(7), targetAfter = new Float64Array(7);
   const sphereRadius = isRing ? 13.5 : PARTICLE_SPHERES[index].radius;
   const physicalScale = isRing ? 13.5 / 6.9 : sphereRadius / 1.13;
   const tilt = 0.15;
@@ -315,7 +318,7 @@ function makeField(count, isRing, index, lowPower) {
   return {
     count, isRing, index, position, history, historyCursor: 0, display, home, height, phases,
     geometry, positionAttribute, material, points, uniforms, ct, st, physicalScale,
-    flowPhase, laneCount, laneAngles, laneCosines, laneSines, targetBefore, targetAfter,
+    flowPhase, deformation, laneCount, laneAngles, targetBefore, targetAfter,
   };
 }
 
@@ -358,9 +361,7 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
   const influence = (isRing ? 1.15 : 1.12) * field.physicalScale;
   const influenceSquared = influence * influence;
   const push = (isRing ? 3.5 : 5.0) * field.physicalScale * POINTER_GAIN * dt * (reducedMotion ? 0.55 : 1);
-  const restore = 1 - Math.exp(-(isRing ? 0.9 : 1.1) * dt);
   const azimuthRate = reducedMotion ? 0 : handedness * 0.14;
-  const azimuthBefore = (age - dt) * azimuthRate;
   const azimuthAfter = age * azimuthRate;
   if (!isRing) {
     for (let lane = 0; lane < field.laneCount; lane++) {
@@ -368,8 +369,6 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
       // azimuths give the three worlds their own restrained vortex character.
       const delta = -spin * dt * (0.91 + 0.09 * Math.sin(lane * 2.399 + field.index));
       field.laneAngles[lane] = delta;
-      field.laneCosines[lane] = Math.cos(delta);
-      field.laneSines[lane] = Math.sin(delta);
     }
   }
   for (let i = 0; i < count; i++) {
@@ -383,19 +382,16 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
       x = nx; y = perpendicular * ct + nz * st; z = nz * ct - perpendicular * st;
     } else {
       const lane = i % field.laneCount;
-      const before = field.targetBefore, after = field.targetAfter;
-      toroidalTarget(field.home[i], field.flowPhase[i], field.height[i] + azimuthBefore, before);
+      const after = field.targetAfter;
       field.flowPhase[i] = (field.flowPhase[i] + field.laneAngles[lane] + TAU) % TAU;
       toroidalTarget(field.home[i], field.flowPhase[i], field.height[i] + azimuthAfter, after);
-      const ox = x - before[0], oy = y - before[1], oz = z - before[2];
-      const radialOffset = ox * before[3] + oz * before[4];
-      const aroundOffset = -ox * before[4] + oz * before[3];
-      const c = field.laneCosines[lane], s = field.laneSines[lane];
-      // Transport the pointer-carved distortion with the current before it
-      // relaxes, so hovering makes travelling curls and lace-like streamers.
-      const radial = (radialOffset * c - oy * s) * (1 - restore);
-      const vertical = (radialOffset * s + oy * c) * (1 - restore);
-      const around = aroundOffset * (1 - restore);
+      const memory = field.deformation;
+      // A fixed material-space offset follows both poloidal and azimuthal
+      // circulation. Its magnitude and particle identity survive indefinitely
+      // between cursor encounters, while the visible pattern keeps evolving.
+      const radial = memory[o] * after[5] - memory[o + 1] * after[6];
+      const vertical = memory[o] * after[6] + memory[o + 1] * after[5];
+      const around = memory[o + 2];
       x = after[0] + radial * after[3] - around * after[4];
       y = after[1] + vertical;
       z = after[2] + radial * after[4] + around * after[3];
@@ -421,37 +417,42 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
           const outward = (fx * nx + fy * ny + fz * nz) * 0.94;
           fx -= nx * outward; fy -= ny * outward; fz -= nz * outward;
         }
-        x += fx * strength;
-        y += fy * strength;
-        z += fz * strength;
+        if (!isRing) {
+          const target = field.targetAfter, memory = field.deformation;
+          const radialForce = fx * target[3] + fz * target[4];
+          const aroundForce = -fx * target[4] + fz * target[3];
+          memory[o] += (radialForce * target[5] + fy * target[6]) * strength;
+          memory[o + 1] += (-radialForce * target[6] + fy * target[5]) * strength;
+          memory[o + 2] += aroundForce * strength;
+          const magnitude = Math.hypot(memory[o], memory[o + 1], memory[o + 2]);
+          const maximum = field.home[i] * 0.64;
+          if (magnitude > maximum) {
+            const scale = maximum / magnitude;
+            memory[o] *= scale; memory[o + 1] *= scale; memory[o + 2] *= scale;
+          }
+          const radial = memory[o] * target[5] - memory[o + 1] * target[6];
+          const vertical = memory[o] * target[6] + memory[o + 1] * target[5];
+          x = target[0] + radial * target[3] - memory[o + 2] * target[4];
+          y = target[1] + vertical;
+          z = target[2] + radial * target[4] + memory[o + 2] * target[3];
+        } else {
+          x += fx * strength; y += fy * strength; z += fz * strength;
+        }
       }
     }
     if (isRing) {
       let planarZ = y * st + z * ct;
       let perpendicular = y * ct - z * st;
       const radius = Math.max(0.001, Math.hypot(x, planarZ));
-      const targetRadius = field.home[i];
+      // Ring particles also retain cursor edits: rigid advection preserves
+      // their new radius/height instead of pulling them back to a template.
       const nextRadius = Math.max(5.5 * field.physicalScale,
-        Math.min(8.6 * field.physicalScale, radius + (targetRadius - radius) * restore));
+        Math.min(8.6 * field.physicalScale, radius));
       const factor = nextRadius / radius;
       x *= factor; planarZ *= factor;
-      perpendicular += (field.height[i] - perpendicular) * restore;
       perpendicular = Math.max(-1.3 * field.physicalScale, Math.min(1.3 * field.physicalScale, perpendicular));
       y = perpendicular * ct + planarZ * st;
       z = planarZ * ct - perpendicular * st;
-    } else {
-      // A bounded displacement around the toroidal target preserves a narrow
-      // central channel; restoring to a sphere would erase the field shape.
-      const target = field.targetAfter;
-      const ox = x - target[0], oy = y - target[1], oz = z - target[2];
-      const offset = Math.hypot(ox, oy, oz);
-      const maximum = field.home[i] * 0.64;
-      if (offset > maximum) {
-        const scale = maximum / offset;
-        x = target[0] + ox * scale;
-        y = target[1] + oy * scale;
-        z = target[2] + oz * scale;
-      }
     }
     position[o] = x; position[o + 1] = y; position[o + 2] = z;
   }
@@ -466,9 +467,9 @@ export function createParticleWorld(scene, { lowPower = false } = {}) {
   // Stable Vector4 references let the water follow them without allocations.
   const centers = PARTICLE_SPHERES.map(sphere => new THREE.Vector4(sphere.x, sphere.y, sphere.z, sphere.radius));
   const velocities = [
-    new THREE.Vector3(0.23, 0.012, -0.12),
-    new THREE.Vector3(-0.20, -0.009, 0.21),
-    new THREE.Vector3(-0.18, 0.010, -0.16),
+    new THREE.Vector3(0.48, 0.080, -0.26),
+    new THREE.Vector3(-0.44, -0.065, 0.42),
+    new THREE.Vector3(-0.39, 0.075, -0.34),
   ];
   if (reducedMotion) for (const velocity of velocities) velocity.set(0, 0, 0);
   const shellGeometry = new THREE.SphereGeometry(1, lowPower ? 24 : 32, lowPower ? 16 : 24);

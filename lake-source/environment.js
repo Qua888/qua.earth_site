@@ -1,8 +1,7 @@
 import * as THREE from 'three';
-import { createPlanarReflection } from './planar-reflection.js';
 
-// One almost-still water surface, with a small planar reflection target reused
-// between updates. Footsteps add local ripples without disturbing the lake.
+// One almost-still iridescent surface, rendered in the main scene only.
+// Footsteps add local ripples without another camera, texture or render pass.
 export function createEnvironment(scene, { lowPower = false } = {}) {
   const objects = [];
   const resources = [];
@@ -12,8 +11,7 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
   const timeUniform = { value: 0 };
   scene.background = new THREE.Color(0x796371);
   scene.fog = new THREE.FogExp2(fogColor, 0.006);
-  // One inexpensive atmosphere function is used for both the actual sky and
-  // the reflected sky. Cloud bands therefore meet at the same quiet horizon.
+  // Continuous direction-based clouds keep the atmosphere free of a longitude seam.
   const skyShader = `
     uniform float uTime;
     float skyHash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -26,7 +24,7 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
       float warm=exp(-(1.-dot(horizonDirection,normalize(vec3(-.62,0.,-.78))))*21.)*exp(-d.y*d.y*54.);
       color+=vec3(.29,.12,.035)*warm;
       // Sample the direction itself. Unlike an atan longitude, this circular
-      // path has no branch cut to expose in either the sky or its reflection.
+      // path has no branch cut to expose while looking around the sky.
       vec2 uv=d.xz*2.5+vec2(d.y*13.,d.y*8.3);
       float n=skyNoise(uv+vec2(uTime*.003,0.))*.69
         +skyNoise(uv*2.13+vec2(8.7,-uTime*.002))*.31;
@@ -80,19 +78,16 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
 
   const rippleCount = lowPower ? 5 : 8;
   const ripples = Array.from({ length: rippleCount }, () => new THREE.Vector4(0, 0, -100, 0));
-  const sphereCenters = [new THREE.Vector4(-8.2, 6.3, -2.5, 4.2375), new THREE.Vector4(0, 7.6, -9.2, 4.6125), new THREE.Vector4(8.2, 6.3, -2.5, 4.2375)];
   const waterUniforms = {
     uTime: timeUniform, uRipples: { value: ripples }, uFogColor: { value: fogColor },
-    uSphereCenters: { value: sphereCenters },
-    uReflection: { value: null }, uReflectionMatrix: { value: new THREE.Matrix4() }, uReflectionReady: { value: 0 },
   };
   const waterGeometry = keep(new THREE.PlaneGeometry(384, 384, lowPower ? 64 : 96, lowPower ? 64 : 96));
   waterGeometry.rotateX(-Math.PI / 2);
   const waterMaterial = keep(new THREE.ShaderMaterial({
     uniforms: waterUniforms, defines: { RIPPLE_COUNT: rippleCount },
     vertexShader: `
-      uniform float uTime; uniform vec4 uRipples[RIPPLE_COUNT]; uniform mat4 uReflectionMatrix;
-      varying vec3 vWorld; varying vec3 vNormal; varying vec4 vMirrorCoord;
+      uniform float uTime; uniform vec4 uRipples[RIPPLE_COUNT];
+      varying vec3 vWorld; varying vec3 vNormal;
       void main(){
         vec3 p=position; float t=uTime;
         float a=p.x*.43+p.z*.28+t*.25;
@@ -112,15 +107,13 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
           h+=sin(front*2.2)*envelope*.003;
         }
         p.y+=h; vWorld=(modelMatrix*vec4(p,1.)).xyz;
-        vMirrorCoord=uReflectionMatrix*vec4(vWorld.x,0.,vWorld.z,1.);
         vNormal=normalize(vec3(-slope.x,1.,-slope.y));
         gl_Position=projectionMatrix*viewMatrix*vec4(vWorld,1.);
       }`,
     fragmentShader: `
-      uniform vec3 uFogColor; uniform vec4 uRipples[RIPPLE_COUNT]; uniform vec4 uSphereCenters[3];
-      uniform sampler2D uReflection; uniform float uReflectionReady;
-      varying vec3 vWorld; varying vec3 vNormal; varying vec4 vMirrorCoord;
-      ${skyShader}
+      uniform vec3 uFogColor; uniform vec4 uRipples[RIPPLE_COUNT];
+      varying vec3 vWorld; varying vec3 vNormal;
+      uniform float uTime;
       void main(){
         vec3 view=normalize(cameraPosition-vWorld);
         vec2 p=vWorld.xz; float t=uTime;
@@ -141,27 +134,17 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
           rippleGlint+=(.5+.5*wave)*envelope;
         }
         vec3 n=normalize(vNormal+vec3(micro.x-rippleSlope.x,0.,micro.y-rippleSlope.y));
-        vec3 reflected=reflect(-view,n);
         float fresnel=pow(1.-max(dot(n,view),0.),3.2);
-        vec3 film=.52+.35*cos(vec3(0.,2.1,4.2)+reflected.y*5.8+reflected.x*2.4+p.x*.035+p.y*.052);
-        vec3 shallow=mix(vec3(.16,.135,.18),vec3(.29,.27,.25),.5+.5*sin(p.x*.15+p.y*.1));
-        vec3 sky=sampleSky(reflected);
-        vec3 color=mix(shallow*film*.36,sky*(.98+film*.04),.91+fresnel*.07);
-        float spec=pow(max(dot(reflected,normalize(vec3(-.62,.07,-.78))),0.),260.);
-        color+=vec3(.32,.17,.085)*spec*.3;
-        // First-frame fallback while the reflection target is being filled.
-        float glow=0.;
-        for(int i=0;i<3;i++){
-          float radius=uSphereCenters[i].w;
-          glow+=exp(-length((p-uSphereCenters[i].xz)*vec2(.85/radius,.47/radius))*1.2);
-        }
-        color+=film*glow*.035*(1.-uReflectionReady);
-        vec2 mirrorUv=vMirrorCoord.xy/max(vMirrorCoord.w,.0001);
-        mirrorUv+=rippleSlope*.003+micro*.012;
-        float inMirror=step(0.,mirrorUv.x)*step(mirrorUv.x,1.)*step(0.,mirrorUv.y)*step(mirrorUv.y,1.)*step(.0001,vMirrorCoord.w);
-        vec3 clearReflection=texture2D(uReflection,clamp(mirrorUv,vec2(.001),vec2(.999))).rgb;
-        color=mix(color,clearReflection*(.98+film*.035),uReflectionReady*inMirror);
-        color=mix(color,film,.025);
+        // A quiet coloured film and fixed light retain the chrome mood without
+        // mirroring the sky, bubbles or traveller into the bottom of the room.
+        vec3 film=.52+.35*cos(vec3(0.,2.1,4.2)+n.y*5.8+n.x*2.4+p.x*.035+p.y*.052);
+        vec3 shallow=mix(vec3(.105,.09,.135),vec3(.16,.13,.155),.5+.5*sin(p.x*.15+p.y*.1));
+        vec3 horizonTint=vec3(.22,.135,.17);
+        vec3 color=mix(shallow*(.65+film*.35),horizonTint,.35+fresnel*.40);
+        color+=(film-.5)*.035;
+        vec3 halfLight=normalize(normalize(vec3(-.62,.35,-.78))+view);
+        float spec=pow(max(dot(n,halfLight),0.),180.);
+        color+=vec3(.10,.065,.08)*spec;
         color+=mix(vec3(.005,.003,.007),film*.008,.45)*min(rippleGlint,1.4);
         float distance=length(cameraPosition-vWorld);
         color=mix(color,uFogColor,1.-exp(-distance*distance*.000065));
@@ -173,9 +156,6 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
   const water = add(new THREE.Mesh(waterGeometry, waterMaterial));
   water.name = 'rainbow-chrome-shallows';
   water.frustumCulled = false;
-  const reflection = createPlanarReflection(water, { lowPower });
-  waterUniforms.uReflection.value = reflection.texture;
-  waterUniforms.uReflectionMatrix.value = reflection.textureMatrix;
 
   const smooth = (a, b, value) => {
     const t = THREE.MathUtils.clamp((value - a) / (b - a), 0, 1);
@@ -254,24 +234,11 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
   const stone = add(new THREE.Mesh(rockGeometry, rockMaterial));
   stone.name = 'weathered-limestone-island';
 
-  // No enclosing mountain wall: the far water and mirrored atmosphere share
-  // a broad, uninterrupted salt-flat horizon.
+  // No enclosing mountain wall: quiet water meets the open salt-flat horizon.
 
   let currentTime = 0, rippleIndex = 0;
   return {
     update(time) { currentTime = time; waterUniforms.uTime.value = time; },
-    resize(width, height) { reflection.resize(width, height); },
-    renderReflection(renderer, reflectedScene, camera, time) {
-      const rendered = reflection.render(renderer, reflectedScene, camera, time);
-      waterUniforms.uReflectionReady.value = reflection.ready ? 1 : 0;
-      return rendered;
-    },
-    setSphereCenters(centers) {
-      for (let i = 0; i < 3; i++) if (centers[i]) {
-        const center=centers[i];
-        sphereCenters[i].set(center.x,center.y,center.z,center.w??sphereCenters[i].w);
-      }
-    },
     groundHeight,
     emitRipple(x, z) {
       // The dry limestone does not send water ripples through solid ground.
@@ -280,7 +247,6 @@ export function createEnvironment(scene, { lowPower = false } = {}) {
       rippleIndex = (rippleIndex + 1) % rippleCount;
     },
     dispose() {
-      reflection.dispose();
       for (const object of objects) scene.remove(object);
       for (const resource of resources) resource.dispose();
     },

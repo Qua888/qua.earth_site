@@ -141,7 +141,6 @@ function resize(){
   const width=canvas.clientWidth,height=canvas.clientHeight;
   renderer.setPixelRatio(Math.min(devicePixelRatio||1,lowPower?1.15:1.6));
   renderer.setSize(width,height,false);camera.aspect=width/Math.max(1,height);camera.updateProjectionMatrix();
-  environment.resize?.(width,height);
   positionCamera(1);
 }
 reset();resize();
@@ -173,9 +172,7 @@ function render(now){
   raycaster.setFromCamera(cursor,camera);
   travellerVelocity.set(velocity.x,flight.velocity,velocity.y);
   particles.update(time,delta,raycaster.ray,cursorActive,0,traveller);
-  environment.setSphereCenters?.(particles.centers);
   environment.update(time,delta);
-  environment.renderReflection?.(renderer,scene,camera,time);
   renderer.render(scene,camera);
 }
 document.addEventListener('visibilitychange',()=>{visible=!document.hidden;lastTime=performance.now();release();});

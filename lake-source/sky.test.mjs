@@ -3,7 +3,6 @@ import {readFileSync} from 'node:fs';
 import * as THREE from 'three';
 import {createEnvironment} from './environment.js';
 
-// The same direction-to-cloud mapping runs in the real sky and reflected sky.
 // Check both sides of the old longitude cut at several elevations and times.
 const fract=x=>x-Math.floor(x);
 const mix=(a,b,t)=>a+(b-a)*t;
@@ -31,11 +30,6 @@ const sky=scene.children.find(o=>o.material?.fragmentShader?.includes('sampleSky
 const water=scene.getObjectByName('rainbow-chrome-shallows');
 assert.ok(sky&&water);
 assert.match(sky.material.fragmentShader,/vec2 uv=d\.xz/);
-assert.match(water.material.fragmentShader,/vec2 uv=d\.xz/);
-const center=new THREE.Vector4(1,8,-3,4.8);
-environment.setSphereCenters([center]);
-const stored=water.material.uniforms.uSphereCenters.value[0];
-assert.deepEqual(stored.toArray(),center.toArray(),'Reflection receives the current sphere radius as well as position.');
-center.w=99;assert.equal(stored.w,4.8,'Reflection owns its fixed uniform storage.');
+assert.doesNotMatch(water.material.fragmentShader,/sampleSky|sampler2D|texture2D|reflect\(/,'Water has no mirrored scene or sky samples.');
 environment.dispose();
-console.log('PASS: seamless sky and reflection mapping; dynamic reflection radii.');
+console.log('PASS: seamless sky mapping and a reflection-free lake surface.');

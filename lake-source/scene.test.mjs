@@ -18,7 +18,6 @@ const ray=new THREE.Ray(new THREE.Vector3(-8,4,16),new THREE.Vector3(0,0,-1));
 for(let frame=0;frame<600;frame++){
   const time=(frame+1)/60;
   world.update(time,1/60,ray,frame<300,0);
-  environment.setSphereCenters(world.centers);
   environment.update(time,1/60);
   if(frame%30===0)environment.emitRipple(4,time*.1);
   avatar.update(time,1/60,1);
