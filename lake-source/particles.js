@@ -208,6 +208,21 @@ function makeRandom(seed) {
   };
 }
 
+// Closed meridian streamlines form a fat toroidal / dipole field. The inner
+// branch rises through a narrow channel; the outer branch returns around the
+// poles and below. Direction-based periodic twist closes without a wrap seam.
+function toroidalTarget(radius, phase, azimuth, out) {
+  const sine = Math.sin(phase), cosine = Math.cos(phase);
+  const taper = Math.sqrt(Math.max(0.02, 1 - 0.8433985839233653 * sine * sine));
+  const radial = radius * (0.51 + 0.465 * cosine) * taper;
+  const phi = azimuth + 0.26 * sine + 0.095 * Math.sin(phase * 2);
+  const cp = Math.cos(phi), sp = Math.sin(phi);
+  out[0] = radial * cp;
+  out[1] = radius * 0.90 * sine;
+  out[2] = radial * sp;
+  out[3] = cp; out[4] = sp;
+}
+
 function makeField(count, isRing, index, lowPower) {
   const random = makeRandom(1741 + index * 1097);
   const position = new Float32Array(count * 3);
@@ -221,13 +236,18 @@ function makeField(count, isRing, index, lowPower) {
   const home = new Float32Array(count);
   const height = new Float32Array(count);
   const phases = new Float32Array(count);
+  const flowPhase = new Float32Array(count);
+  const laneCount = lowPower ? 18 : 24;
+  const laneAngles = new Float64Array(laneCount);
+  const laneCosines = new Float64Array(laneCount);
+  const laneSines = new Float64Array(laneCount);
+  const targetBefore = new Float64Array(5), targetAfter = new Float64Array(5);
   const sphereRadius = isRing ? 13.5 : PARTICLE_SPHERES[index].radius;
   const physicalScale = isRing ? 13.5 / 6.9 : sphereRadius / 1.13;
   const tilt = 0.15;
   const ct = Math.cos(tilt), st = Math.sin(tilt);
   for (let i = 0; i < count; i++) {
     const o = i * 3;
-    const theta = i * Math.PI * (3 - Math.sqrt(5));
     phases[i] = random() * TAU;
     if (isRing) {
       const angle = random() * TAU;
@@ -242,13 +262,18 @@ function makeField(count, isRing, index, lowPower) {
       home[i] = radius;
       height[i] = py;
     } else {
-      const y = 1 - 2 * (i + 0.5) / count;
-      const radial = Math.sqrt(Math.max(0, 1 - y * y));
-      const radius = sphereRadius * (0.91 + random() * 0.14);
-      position[o] = Math.cos(theta) * radial * radius;
-      position[o + 1] = y * radius;
-      position[o + 2] = Math.sin(theta) * radial * radius;
-      home[i] = radius;
+      const lane = i % laneCount;
+      const along = Math.floor(i / laneCount);
+      const samples = Math.ceil((count - lane) / laneCount);
+      // Staggered beads on a small number of legible meridians, rather than a
+      // uniform spherical cloud. Slight lane widths keep the light organic.
+      home[i] = sphereRadius * (0.94 + (lane % 3) * 0.025 + random() * 0.008);
+      height[i] = lane / laneCount * TAU + index * 0.27;
+      flowPhase[i] = along / samples * TAU + lane * 0.071 + index * 0.38;
+      toroidalTarget(home[i], flowPhase[i], height[i], targetBefore);
+      position[o] = targetBefore[0];
+      position[o + 1] = targetBefore[1];
+      position[o + 2] = targetBefore[2];
     }
     const tint = random();
     const red = 0.94 + tint * 0.06;
@@ -290,6 +315,7 @@ function makeField(count, isRing, index, lowPower) {
   return {
     count, isRing, index, position, history, historyCursor: 0, display, home, height, phases,
     geometry, positionAttribute, material, points, uniforms, ct, st, physicalScale,
+    flowPhase, laneCount, laneAngles, laneCosines, laneSines, targetBefore, targetAfter,
   };
 }
 
@@ -322,8 +348,6 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
   const handedness = isRing || field.index !== 1 ? 1 : -1;
   const angle = spin * dt * handedness;
   const ca = Math.cos(angle), sa = Math.sin(angle);
-  const smallAngle = isRing || reducedMotion ? 0 : angle * 0.21;
-  const cb = Math.cos(smallAngle), sb = Math.sin(smallAngle);
   const hasRay = active && ray && ray.origin && ray.direction;
   const rox = hasRay ? ray.origin.x - points.position.x : 0;
   const roy = hasRay ? ray.origin.y - points.position.y : 0;
@@ -334,7 +358,20 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
   const influence = (isRing ? 1.15 : 1.12) * field.physicalScale;
   const influenceSquared = influence * influence;
   const push = (isRing ? 3.5 : 5.0) * field.physicalScale * POINTER_GAIN * dt * (reducedMotion ? 0.55 : 1);
-  const restore = 1 - Math.exp(-(isRing ? 0.9 : 0.72) * dt);
+  const restore = 1 - Math.exp(-(isRing ? 0.9 : 1.1) * dt);
+  const azimuthRate = reducedMotion ? 0 : handedness * 0.14;
+  const azimuthBefore = (age - dt) * azimuthRate;
+  const azimuthAfter = age * azimuthRate;
+  if (!isRing) {
+    for (let lane = 0; lane < field.laneCount; lane++) {
+      // The poloidal current always rises through the centre. Counter-turning
+      // azimuths give the three worlds their own restrained vortex character.
+      const delta = -spin * dt * (0.91 + 0.09 * Math.sin(lane * 2.399 + field.index));
+      field.laneAngles[lane] = delta;
+      field.laneCosines[lane] = Math.cos(delta);
+      field.laneSines[lane] = Math.sin(delta);
+    }
+  }
   for (let i = 0; i < count; i++) {
     const o = i * 3;
     let x = position[o], y = position[o + 1], z = position[o + 2];
@@ -345,11 +382,23 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
       const nz = x * sa + planarZ * ca;
       x = nx; y = perpendicular * ct + nz * st; z = nz * ct - perpendicular * st;
     } else {
-      const nx = x * ca - y * sa;
-      const ny = x * sa + y * ca;
-      x = nx * cb + z * sb;
-      y = ny;
-      z = -nx * sb + z * cb;
+      const lane = i % field.laneCount;
+      const before = field.targetBefore, after = field.targetAfter;
+      toroidalTarget(field.home[i], field.flowPhase[i], field.height[i] + azimuthBefore, before);
+      field.flowPhase[i] = (field.flowPhase[i] + field.laneAngles[lane] + TAU) % TAU;
+      toroidalTarget(field.home[i], field.flowPhase[i], field.height[i] + azimuthAfter, after);
+      const ox = x - before[0], oy = y - before[1], oz = z - before[2];
+      const radialOffset = ox * before[3] + oz * before[4];
+      const aroundOffset = -ox * before[4] + oz * before[3];
+      const c = field.laneCosines[lane], s = field.laneSines[lane];
+      // Transport the pointer-carved distortion with the current before it
+      // relaxes, so hovering makes travelling curls and lace-like streamers.
+      const radial = (radialOffset * c - oy * s) * (1 - restore);
+      const vertical = (radialOffset * s + oy * c) * (1 - restore);
+      const around = aroundOffset * (1 - restore);
+      x = after[0] + radial * after[3] - around * after[4];
+      y = after[1] + vertical;
+      z = after[2] + radial * after[4] + around * after[3];
     }
     if (hasRay) {
       const vx = x - rox, vy = y - roy, vz = z - roz;
@@ -391,11 +440,18 @@ function simulate(field, dt, age, ray, active, reducedMotion) {
       y = perpendicular * ct + planarZ * st;
       z = planarZ * ct - perpendicular * st;
     } else {
-      const radius = Math.max(0.001, Math.hypot(x, y, z));
-      const nextRadius = Math.max(0.4 * field.physicalScale, Math.min(field.home[i] * 1.78,
-        radius + (field.home[i] - radius) * restore));
-      const factor = nextRadius / radius;
-      x *= factor; y *= factor; z *= factor;
+      // A bounded displacement around the toroidal target preserves a narrow
+      // central channel; restoring to a sphere would erase the field shape.
+      const target = field.targetAfter;
+      const ox = x - target[0], oy = y - target[1], oz = z - target[2];
+      const offset = Math.hypot(ox, oy, oz);
+      const maximum = field.home[i] * 0.64;
+      if (offset > maximum) {
+        const scale = maximum / offset;
+        x = target[0] + ox * scale;
+        y = target[1] + oy * scale;
+        z = target[2] + oz * scale;
+      }
     }
     position[o] = x; position[o + 1] = y; position[o + 2] = z;
   }

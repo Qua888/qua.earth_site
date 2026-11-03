@@ -9,8 +9,10 @@ Run the numerical scene checks with `node lake-source/scene.test.mjs`.
 WASD/arrow keys move the light avatar; E/Space rises and Q/C descends.
 Releasing the height control leaves the avatar hovering. Dragging looks around,
 and the wheel changes camera distance. Touch devices use the left movement
-pad, right up/down buttons, and drag elsewhere to look. The visible pointer ray stirs each spherical particle field
-and the surrounding particle ring.
+pad, right up/down buttons, and drag elsewhere to look. The visible pointer ray stirs each toroidal particle field and the surrounding
+particle ring. Ordered meridian streams rise through a narrow central channel,
+fan over the poles, and circulate back around the outside; pointer distortions
+travel with the flow before settling back into the field.
 
 Three bubble centres use a fixed 120 Hz simulation, gentle elastic contacts,
 and full-radius containment inside the ring. Approaching or touching a bubble
