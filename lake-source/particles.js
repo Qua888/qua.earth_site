@@ -1,15 +1,48 @@
 import * as THREE from 'three';
 
 export const PARTICLE_SPHERES = Object.freeze([
-  Object.freeze({ x: -8.2, y: 4.1, z: -2.5, radius: 3.39 }),
-  Object.freeze({ x: 0, y: 5.4, z: -9.2, radius: 3.69 }),
-  Object.freeze({ x: 8.2, y: 4.1, z: -2.5, radius: 3.39 }),
+  Object.freeze({ x: -8.2, y: 6.3, z: -2.5, radius: 4.2375 }),
+  Object.freeze({ x: 0, y: 7.6, z: -9.2, radius: 4.6125 }),
+  Object.freeze({ x: 8.2, y: 6.3, z: -2.5, radius: 4.2375 }),
 ]);
 
 const STEP = 1 / 120;
 const POINTER_GAIN = 1.2;
 const TAU = Math.PI * 2;
 const BUBBLE_BOUNDARY = 13.1;
+const CONTACT_SPEED_LIMIT = 0.88;
+
+function capVelocity(velocity, maximum) {
+  const speed = velocity.length();
+  if (speed > maximum) velocity.multiplyScalar(maximum / speed);
+}
+
+function stirBubble(center, velocity, traveller, dt) {
+  const p = traveller?.position;
+  if (!p || !Number.isFinite(p.x + p.y + p.z)) return false;
+  let dx = center.x - p.x, dy = center.y - p.y, dz = center.z - p.z;
+  const distance = Math.hypot(dx, dy, dz);
+  const radius = Math.max(0.1, Math.min(2, traveller.radius || 0.45));
+  const surface = center.w + radius;
+  const reach = surface + 1.5;
+  if (distance >= reach) return false;
+  if (distance < 0.0001) { dx = 0; dy = 1; dz = 0; }
+  else { dx /= distance; dy /= distance; dz /= distance; }
+  const proximity = Math.max(0, Math.min(1, (reach - distance) / 1.5));
+  const v = traveller.velocity;
+  const approach = v && Number.isFinite(v.x + v.y + v.z)
+    ? Math.max(0, (v.x - velocity.x) * dx + (v.y - velocity.y) * dy + (v.z - velocity.z) * dz)
+    : 0;
+  // A cushion begins before contact, then yields softly to the little light
+  // traveller. Acceleration and speed are bounded even if it flies through.
+  const penetration = Math.max(0, surface - distance);
+  const acceleration = Math.min(1.1, proximity * proximity * 0.42
+    + approach * proximity * 0.20 + penetration * 0.16);
+  velocity.x += dx * acceleration * dt;
+  velocity.y += dy * acceleration * dt;
+  velocity.z += dz * acceleration * dt;
+  return true;
+}
 
 function constrainBubble(center, velocity) {
   const dx = center.x, dz = center.z + 5;
@@ -25,25 +58,33 @@ function constrainBubble(center, velocity) {
       velocity.z -= nz * outward * 1.96;
     }
   }
-  const floor = center.w + 0.45, ceiling = center.w + 3.2;
+  const floor = center.w + 0.8, ceiling = center.w + 4.5;
   if (center.y < floor) { center.y = floor; if (velocity.y < 0) velocity.y *= -0.8; }
   if (center.y > ceiling) { center.y = ceiling; if (velocity.y > 0) velocity.y *= -0.8; }
 }
 
-function driftBubbles(centers, velocities, dt, age) {
+function driftBubbles(centers, velocities, dt, age, traveller, reducedMotion) {
   for (let i = 0; i < centers.length; i++) {
     const center = centers[i], velocity = velocities[i];
-    const hoverHeight = PARTICLE_SPHERES[i].y + Math.sin(age * 0.18 + i * 1.7) * 0.24;
-    velocity.y += ((hoverHeight - center.y) * 0.025 - velocity.y * 0.04) * dt;
+    if (!reducedMotion) {
+      const hoverHeight = PARTICLE_SPHERES[i].y + Math.sin(age * 0.18 + i * 1.7) * 0.24;
+      velocity.y += ((hoverHeight - center.y) * 0.025 - velocity.y * 0.04) * dt;
+    }
+    const touching = stirBubble(center, velocity, traveller, dt);
     const speed = Math.hypot(velocity.x, velocity.y, velocity.z);
-    if (speed > 0.42) velocity.multiplyScalar(0.42 / speed);
+    const driftSpeed = reducedMotion ? 0 : 0.32;
+    if (!touching && speed > driftSpeed) {
+      const settlingSpeed = driftSpeed + (speed - driftSpeed) * Math.exp(-dt * 0.55);
+      velocity.multiplyScalar(settlingSpeed / speed);
+    }
+    capVelocity(velocity, CONTACT_SPEED_LIMIT);
     center.x += velocity.x * dt;
     center.y += velocity.y * dt;
     center.z += velocity.z * dt;
   }
   // Soft contact first, then a tiny penetration correction. Fixed steps and
   // approach-only impulses prevent grazing contacts from chattering.
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 8; pass++) {
     for (let i = 0; i < centers.length; i++) {
       for (let j = i + 1; j < centers.length; j++) {
         const a = centers[i], b = centers[j], va = velocities[i], vb = velocities[j];
@@ -74,7 +115,10 @@ function driftBubbles(centers, velocities, dt, age) {
         }
       }
     }
-    for (let i = 0; i < centers.length; i++) constrainBubble(centers[i], velocities[i]);
+    for (let i = 0; i < centers.length; i++) {
+      constrainBubble(centers[i], velocities[i]);
+      capVelocity(velocities[i], CONTACT_SPEED_LIMIT);
+    }
   }
 }
 
@@ -238,7 +282,7 @@ function makeField(count, isRing, index, lowPower) {
   points.name = isRing ? 'outer-particle-torus' : `reactive-sphere-${index + 1}`;
   points.frustumCulled = false;
   points.renderOrder = 2;
-  if (isRing) points.position.set(0, 4.0, -5.0);
+  if (isRing) points.position.set(0, 6.2, -5.0);
   else {
     const center = PARTICLE_SPHERES[index];
     points.position.set(center.x, center.y, center.z);
@@ -370,9 +414,10 @@ export function createParticleWorld(scene, { lowPower = false } = {}) {
     new THREE.Vector3(-0.20, -0.009, 0.21),
     new THREE.Vector3(-0.18, 0.010, -0.16),
   ];
+  if (reducedMotion) for (const velocity of velocities) velocity.set(0, 0, 0);
   const shellGeometry = new THREE.SphereGeometry(1, lowPower ? 24 : 32, lowPower ? 16 : 24);
   for (let index = 0; index < 3; index++) {
-    const field = makeField(lowPower ? 360 : 1050, false, index, lowPower);
+    const field = makeField(lowPower ? 450 : 1313, false, index, lowPower);
     fields.push(field);
     publishPositions(field);
     scene.add(field.points);
@@ -392,7 +437,7 @@ export function createParticleWorld(scene, { lowPower = false } = {}) {
     scene.add(shell);
     shells.push({ mesh: shell, material, uniforms });
   }
-  const ring = makeField(lowPower ? 300 : 500, true, 4, lowPower);
+  const ring = makeField(lowPower ? 375 : 625, true, 4, lowPower);
   fields.push(ring);
   publishPositions(ring);
   scene.add(ring.points);
@@ -401,14 +446,14 @@ export function createParticleWorld(scene, { lowPower = false } = {}) {
   let disposed = false;
   return {
     centers,
-    update(time, delta, ray, active = true, audioEnergy = 0) {
+    update(time, delta, ray, active = true, audioEnergy = 0, traveller = null) {
       if (disposed) return;
       const frameDelta = Math.max(0, Math.min(0.05, Number.isFinite(delta) ? delta : 0));
       const energy = Math.max(0, Math.min(1, audioEnergy || 0));
       accumulator = Math.min(accumulator + frameDelta, STEP * 6);
       while (accumulator + 1e-9 >= STEP) {
         age += STEP;
-        if (!reducedMotion) driftBubbles(centers, velocities, STEP, age);
+        if (!reducedMotion || traveller) driftBubbles(centers, velocities, STEP, age, traveller, reducedMotion);
         for (let index = 0; index < 3; index++) fields[index].points.position.copy(centers[index]);
         for (let index = 0; index < fields.length; index++) {
           simulate(fields[index], STEP, age, ray, active, reducedMotion);

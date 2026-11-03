@@ -9,7 +9,7 @@ const scene=new THREE.Scene();
 const environment=createEnvironment(scene,{lowPower:true});
 const world=createParticleWorld(scene,{lowPower:true});
 const avatar=createLightAvatar(scene,{lowPower:true});
-assert.deepEqual(PARTICLE_SPHERES.map(s=>s.radius),[3.39,3.69,3.39]);
+assert.deepEqual(PARTICLE_SPHERES.map(s=>s.radius),[4.2375,4.6125,4.2375]);
 assert.equal(world.centers.length,3);
 assert.ok(environment.groundHeight(0,5)>.12);
 assert.ok(environment.groundHeight(12,0)<0);

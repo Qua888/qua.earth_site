@@ -9,7 +9,7 @@
 </head>
 <body>
   <main id="room" aria-label="The chromatic lake, an interactive QUA listening room">
-    <canvas id="lake" tabindex="0" aria-label="Walkable rainbow lake with three floating particle spheres. Move with WASD or arrow keys; drag to look around; move your pointer near the spheres to stir their particles." aria-describedby="instructions"></canvas>
+    <canvas id="lake" tabindex="0" aria-label="A rainbow lake with three floating particle spheres. WASD or arrow keys move, E or Space rises, Q or C descends; drag to look, approach the bubbles to nudge them, or move the pointer to stir their particles." aria-describedby="instructions"></canvas>
     <header class="room-top">
       <a class="qua-signature" href="../track2.html" aria-label="QUA · return to Sphere Chamber"><img src="/qua-wordmark.svg" alt="QUA" width="572" height="234"></a>
       <div class="room-title"><span>A LISTENING ROOM IN THE MAKING</span><h1>The chromatic lake.</h1></div>
@@ -17,10 +17,11 @@
     </header>
     <div class="room-whisper" id="welcome"><p>Three little worlds.<br>A little room to wander.</p><span>Move your pointer through the light.</span></div>
     <footer class="room-bottom">
-      <p id="instructions"><span class="desktop-instructions">WASD / arrows <i>float</i> <b>·</b> drag <i>look</i> <b>·</b> wheel <i>closer</i></span><span class="touch-instructions">Left circle to float <b>·</b> drag elsewhere to look</span></p>
+      <p id="instructions"><span class="desktop-instructions">WASD / arrows <i>move</i> <b>·</b> Q ↓ / E ↑ <i>height</i> <b>·</b> drag <i>look</i> <b>·</b> wheel <i>closer</i></span><span class="touch-instructions">Left circle to move <b>·</b> right arrows for height <b>·</b> drag to look</span></p>
       <div class="room-tools"><button id="recenter" type="button" title="Return to the limestone">Back to the stone <span aria-hidden="true">⟲</span></button><button id="fullscreen" type="button" aria-pressed="false">Full screen <span aria-hidden="true">⤢</span></button></div>
     </footer>
     <div class="move-pad" id="movePad" role="group" aria-label="Touch movement joystick"><i id="moveThumb"></i><span>FLOAT</span></div>
+    <div class="flight-controls" role="group" aria-label="Float up or down"><button type="button" data-fly="1" aria-label="Hold to float up" title="Float up · E or Space">↑</button><button type="button" data-fly="-1" aria-label="Hold to float down" title="Float down · Q or C">↓</button></div>
     <p class="scene-error" id="sceneError" hidden role="alert">This space needs WebGL. Try another browser to enter the lake.</p>
     <p class="sr-only" id="status" aria-live="polite">You are on a limestone rock beside a shallow rainbow lake. There is no audio in this room yet.</p>
   </main>

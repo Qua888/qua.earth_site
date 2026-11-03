@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import {createEnvironment} from './environment.js';
 import {createParticleWorld} from './particles.js';
 import {createLightAvatar} from './avatar.js';
+import {stepFlight} from './flight.js';
 import './style.css';
 
 const canvas=document.querySelector('#lake');
@@ -20,6 +21,9 @@ const particles=createParticleWorld(scene,{lowPower});
 const avatar=createLightAvatar(scene,{lowPower});
 const player=new THREE.Vector3(0,0,5.3);
 const velocity=new THREE.Vector2();
+const flight={height:0,velocity:0};
+const travellerVelocity=new THREE.Vector3();
+const traveller={position:player,velocity:travellerVelocity,radius:.45};
 const keys=new Set();
 const cursor=new THREE.Vector2(0,0);
 const raycaster=new THREE.Raycaster();
@@ -29,11 +33,12 @@ const lookTarget=new THREE.Vector3();
 const stick=new THREE.Vector2();
 const thumb=document.querySelector('#moveThumb');
 const pad=document.querySelector('#movePad');
-let yaw=0,targetYaw=0,pitch=.12,targetPitch=.12;
+let yaw=0,targetYaw=0,pitch=0,targetPitch=0;
 let distance=lowPower?13:7.2,targetDistance=distance;
 let cursorActive=false,drag=null,stickId=null;
 let visible=!document.hidden,lastTime=performance.now(),frame=0,time=0,stepDistance=0;
 let welcomeTimer;
+let flyInput=0;
 
 function quietWelcome(){
   document.querySelector('#welcome').classList.add('is-quiet');
@@ -42,19 +47,21 @@ function quietWelcome(){
 welcomeTimer=setTimeout(quietWelcome,15000);
 function reset(){
   player.set(0,environment.groundHeight(0,5.3)+.51,5.3);
+  flight.height=player.y;flight.velocity=0;flyInput=0;
   velocity.set(0,0);keys.clear();stick.set(0,0);
-  yaw=targetYaw=0;pitch=targetPitch=.12;
+  yaw=targetYaw=0;pitch=targetPitch=0;
   distance=targetDistance=lowPower?13:7.2;
   stepDistance=0;
-  cameraAim.copy(player).add(new THREE.Vector3(0,.66,0));
+  cameraAim.copy(player).add(new THREE.Vector3(0,1.5,0));
   positionCamera(1);
   document.querySelector('#status').textContent='Back on the limestone. Move your pointer through the light.';
 }
 function positionCamera(ease){
-  lookTarget.copy(player);lookTarget.y+=.66;
+  lookTarget.copy(player);lookTarget.y+=1.5;
   cameraAim.lerp(lookTarget,ease);
   const horizontal=Math.cos(pitch)*distance;
   cameraGoal.set(cameraAim.x+Math.sin(yaw)*horizontal,cameraAim.y+Math.sin(pitch)*distance,cameraAim.z+Math.cos(yaw)*horizontal);
+  cameraGoal.y=Math.max(.12,environment.groundHeight(cameraGoal.x,cameraGoal.z)+.20,cameraGoal.y);
   camera.position.copy(cameraGoal);camera.lookAt(cameraAim);
   camera.updateMatrixWorld();
 }
@@ -91,13 +98,13 @@ canvas.addEventListener('wheel',event=>{
 window.addEventListener('keydown',event=>{
   if(event.target.closest?.('button,a,input,select,textarea')&&event.key!=='Escape')return;
   const key=event.key.toLowerCase();
-  if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','shift'].includes(key)){
+  if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright','shift','q','e','c',' '].includes(key)){
     event.preventDefault();keys.add(key);quietWelcome();
   }
   if(key==='r'){reset();quietWelcome();}
 });
 window.addEventListener('keyup',event=>keys.delete(event.key.toLowerCase()));
-function release(){keys.clear();velocity.set(0,0);stick.set(0,0);thumb.style.transform='';drag=null;stickId=null;cursorActive=false;}
+function release(){keys.clear();velocity.set(0,0);flight.velocity=0;flyInput=0;stick.set(0,0);thumb.style.transform='';drag=null;stickId=null;cursorActive=false;}
 window.addEventListener('blur',release);
 pad.addEventListener('pointerdown',event=>{
   event.preventDefault();event.stopPropagation();stickId=event.pointerId;
@@ -113,6 +120,15 @@ function setStick(event){
 pad.addEventListener('pointermove',event=>{if(event.pointerId===stickId)setStick(event);});
 function endStick(event){if(event.pointerId===stickId){stickId=null;stick.set(0,0);thumb.style.transform='';}}
 pad.addEventListener('pointerup',endStick);pad.addEventListener('pointercancel',endStick);pad.addEventListener('lostpointercapture',endStick);
+for(const button of document.querySelectorAll('[data-fly]')){
+  const direction=Number(button.dataset.fly);
+  button.addEventListener('pointerdown',event=>{event.preventDefault();event.stopPropagation();button.setPointerCapture(event.pointerId);flyInput=direction;quietWelcome();});
+  const stop=()=>{flyInput=0;};
+  button.addEventListener('pointerup',()=>{stop();canvas.focus({preventScroll:true});});
+  button.addEventListener('pointercancel',stop);button.addEventListener('lostpointercapture',stop);button.addEventListener('blur',stop);
+  button.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();flyInput=direction;quietWelcome();}});
+  button.addEventListener('keyup',stop);
+}
 document.querySelector('#recenter').addEventListener('click',()=>{reset();canvas.focus({preventScroll:true});});
 const fullscreenButton=document.querySelector('#fullscreen');
 fullscreenButton.addEventListener('click',async()=>{
@@ -125,6 +141,7 @@ function resize(){
   const width=canvas.clientWidth,height=canvas.clientHeight;
   renderer.setPixelRatio(Math.min(devicePixelRatio||1,lowPower?1.15:1.6));
   renderer.setSize(width,height,false);camera.aspect=width/Math.max(1,height);camera.updateProjectionMatrix();
+  environment.resize?.(width,height);
   positionCamera(1);
 }
 reset();resize();
@@ -145,16 +162,20 @@ function render(now){
   velocity.x+=(dx-velocity.x)*ease;velocity.y+=(dz-velocity.y)*ease;
   player.x+=velocity.x*delta;player.z+=velocity.y*delta;
   const radius=Math.hypot(player.x,player.z);if(radius>32){player.x*=32/radius;player.z*=32/radius;}
-  player.y+=(environment.groundHeight(player.x,player.z)+.51-player.y)*(1-Math.exp(-9*delta));
-  const moving=velocity.length();stepDistance+=moving*delta;
-  if(stepDistance>.46){stepDistance=0;if(environment.groundHeight(player.x,player.z)<.06)environment.emitRipple(player.x,player.z);}
+  const vertical=Math.max(-1,Math.min(1,flyInput+(keys.has('e')||keys.has(' ')?1:0)-(keys.has('q')||keys.has('c')?1:0)));
+  const ground=environment.groundHeight(player.x,player.z);
+  stepFlight(flight,vertical,ground,delta);player.y=flight.height;
+  const moving=Math.hypot(velocity.length(),flight.velocity);stepDistance+=moving*delta;
+  if(stepDistance>.46){stepDistance=0;if(ground<.06&&player.y-ground<.72)environment.emitRipple(player.x,player.z);}
   avatar.group.position.copy(player);
   avatar.update(time,delta,moving);
   positionCamera(1-Math.exp(-8*delta));
   raycaster.setFromCamera(cursor,camera);
-  particles.update(time,delta,raycaster.ray,cursorActive,0);
+  travellerVelocity.set(velocity.x,flight.velocity,velocity.y);
+  particles.update(time,delta,raycaster.ray,cursorActive,0,traveller);
   environment.setSphereCenters?.(particles.centers);
   environment.update(time,delta);
+  environment.renderReflection?.(renderer,scene,camera,time);
   renderer.render(scene,camera);
 }
 document.addEventListener('visibilitychange',()=>{visible=!document.hidden;lastTime=performance.now();release();});
