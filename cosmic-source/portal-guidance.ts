@@ -1,13 +1,17 @@
 const DEFAULT_ENTRY_DISTANCE = 3600;
 const CLOSE_DISTANCE = 2;
-const MAX_YAW = .65;
+// Match holding ArrowLeft while W moves inward. Integrating log-distance
+// gives wheel/pinch travellers the same continuous sweep without a timer.
+export const PORTAL_LOOK_RATE = .74;
+export const PORTAL_FORWARD_LOG_RATE = .52;
+const LEFT_TURN_PER_LOG_DISTANCE = -PORTAL_LOOK_RATE / PORTAL_FORWARD_LOG_RATE;
+const TURN_RAMP_DISTANCE = .2;
 const MAX_PITCH = .48;
 const RISE_START = 105;
 const RISE_FULL = 55;
 const RISE_EASE_OUT = 15;
 const RISE_END = 8;
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-const smooth = (value: number) => value * value * value * (10 + value * (-15 + 6 * value));
 const smoothIntegral = (value: number) => value * value * value * (1 - value * .5);
 
 export type PortalGuidanceState = {
@@ -55,8 +59,19 @@ export function createPortalGuidance(
 }
 
 function yawAt(distance: number, entry: number, end: number) {
-  const progress = clamp01(Math.log(entry / distance) / Math.log(entry / end));
-  return MAX_YAW * smooth(progress);
+  const span = Math.log(entry / end);
+  const travel = Math.max(0, Math.min(span, Math.log(entry / distance)));
+  const ramp = Math.min(TURN_RAMP_DISTANCE, span * .5);
+  let integral;
+  if (travel < ramp) {
+    integral = ramp * smoothIntegral(travel / ramp);
+  } else if (travel < span - ramp) {
+    integral = travel - ramp * .5;
+  } else {
+    const t = clamp01((travel - span + ramp) / ramp);
+    integral = span - ramp * 1.5 + ramp * (t - smoothIntegral(t));
+  }
+  return LEFT_TURN_PER_LOG_DISTANCE * integral;
 }
 
 function pitchAt(distance: number, profile: Required<PortalGuidanceOptions>) {
@@ -79,7 +94,7 @@ function pitchAt(distance: number, profile: Required<PortalGuidanceOptions>) {
 }
 
 /**
- * Positive right/up turns caused only by newly reached inward travel.
+ * Sustained left/up turns caused only by newly reached inward travel.
  * The profile is an exact distance integral, so keys, wheel and pinch share
  * the same route, regardless of frame rate. Retreating never rewinds or adds
  * steering, and re-approaching an already travelled section cannot add spins.

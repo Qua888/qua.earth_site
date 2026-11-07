@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createPortalGuidance, advancePortalGuidance} from './portal-guidance.ts';
+import {createPortalGuidance, advancePortalGuidance, PORTAL_LOOK_RATE, PORTAL_FORWARD_LOG_RATE} from './portal-guidance.ts';
 
 const close = (actual, expected, epsilon = 1e-10) => assert.ok(Math.abs(actual - expected) < epsilon, `${actual} differs from ${expected}`);
 const state = createPortalGuidance(3600);
@@ -9,18 +9,20 @@ assert.deepEqual(reused, {yaw: 0, pitch: 0}, 'Resting adds no rotation or travel
 assert.equal(state.entryDistance, 3600); assert.equal(state.closestDistance, 3600);
 assert.deepEqual(advancePortalGuidance(state, 3600, 4000), {yaw: 0, pitch: 0}, 'Retreat does not steer.');
 
-// Far approach starts a gentle right turn while preserving the level view.
+// Far approach keeps turning left while preserving the level view.
 const farTurn = advancePortalGuidance(state, 3600, 180);
-assert.ok(farTurn.yaw > .15 && farTurn.yaw < .3);
+assert.ok(farTurn.yaw < -4 && farTurn.yaw > -4.3);
 assert.equal(farTurn.pitch, 0);
 assert.deepEqual(advancePortalGuidance(state, 180, 300), {yaw: 0, pitch: 0});
 assert.deepEqual(advancePortalGuidance(state, 300, 180), {yaw: 0, pitch: 0}, 'Backtracking cannot repeatedly accumulate turns.');
 const nearTurn = advancePortalGuidance(state, 180, 55);
-assert.ok(nearTurn.yaw > 0 && nearTurn.pitch > .05 && nearTurn.pitch < .15, 'Upward rotation begins beside the large frames.');
+assert.ok(nearTurn.yaw < 0 && nearTurn.pitch > .05 && nearTurn.pitch < .15, 'The left turn continues as upward rotation begins beside the large frames.');
 const innerTurn = advancePortalGuidance(state, 55, 8);
 assert.ok(innerTurn.pitch > .35);
 const lastTurn = advancePortalGuidance(state, 8, 1.1);
-close(farTurn.yaw + nearTurn.yaw + innerTurn.yaw + lastTurn.yaw, .65);
+const totalLeftTurn = (entry, end) => -PORTAL_LOOK_RATE / PORTAL_FORWARD_LOG_RATE
+  * (Math.log(entry / end) - Math.min(.2, Math.log(entry / end) * .5));
+close(farTurn.yaw + nearTurn.yaw + innerTurn.yaw + lastTurn.yaw, totalLeftTurn(3600, 2));
 close(farTurn.pitch + nearTurn.pitch + innerTurn.pitch + lastTurn.pitch, .48);
 assert.equal(lastTurn.pitch, 0, 'The rise has gently finished before the central crossing.');
 assert.deepEqual(advancePortalGuidance(state, 1.1, .5), {yaw: 0, pitch: 0});
@@ -32,7 +34,7 @@ function travel(hz) {
     const current = Math.max(1.1, 3600 * Math.exp(-.52 * frame / hz));
     const step = advancePortalGuidance(route, previous, current);
     yaw += step.yaw; pitch += step.pitch;
-    peakStep = Math.max(peakStep, step.yaw, step.pitch);
+    peakStep = Math.max(peakStep, Math.abs(step.yaw), Math.abs(step.pitch));
     previous = current;
   }
   return {yaw, pitch, peakStep, route};
@@ -43,7 +45,7 @@ for (const hz of [30, 60, 144]) {
   close(result.yaw, reference.yaw);
   close(result.pitch, reference.pitch);
   close(result.route.closestDistance, reference.route.closestDistance);
-  assert.ok(result.peakStep < .006, 'Continuous forward movement has no abrupt angular steps.');
+  assert.ok(result.peakStep < .025, 'Continuous forward movement stays at or below the held-arrow turn rate.');
 }
 
 // A split at every ramp boundary agrees with a single inward jump, including
@@ -57,7 +59,8 @@ for (const entry of [3600, 12000, 80]) {
   }
   const once = advancePortalGuidance(whole, entry, 1.1);
   close(yaw, once.yaw); close(pitch, once.pitch);
-  assert.ok(yaw >= 0 && yaw <= .65 && pitch >= 0 && pitch <= .48);
+  close(yaw, totalLeftTurn(entry, 2));
+  assert.ok(pitch >= 0 && pitch <= .48);
 }
 
 // The integrated rise velocity joins continuously at each threshold.
@@ -85,15 +88,15 @@ assert.deepEqual(advancePortalGuidance(reset, 3600, 180), farTurn, 'A fresh real
 // without tying steering to seconds or to the familiar central cube's size.
 const tidal = exponent => 180 * Math.exp(exponent);
 const outerProfile = {
-  turnEndDistance: tidal(4.5),
+  turnEndDistance: 90,
   riseStartDistance: tidal(6.8), riseFullDistance: tidal(6.3),
   riseEaseOutDistance: tidal(5), riseEndDistance: tidal(4.6),
 };
 function outerTravel(hz) {
   const route = createPortalGuidance(tidal(7.4), outerProfile);
   let previous = route.entryDistance, yaw = 0, pitch = 0;
-  for(let frame = 1; frame <= hz * 8; frame++) {
-    const current = route.entryDistance * Math.exp(-.52 * frame / hz);
+  for(let frame = 1; frame <= hz * 20; frame++) {
+    const current = route.entryDistance * Math.exp(-PORTAL_FORWARD_LOG_RATE * frame / hz);
     const step = advancePortalGuidance(route, previous, current);
     yaw += step.yaw; pitch += step.pitch; previous = current;
   }
@@ -101,17 +104,42 @@ function outerTravel(hz) {
 }
 const outerStart = createPortalGuidance(tidal(7.4), outerProfile);
 const outerEarly = advancePortalGuidance(outerStart, tidal(7.4), tidal(6.8));
-assert.ok(outerEarly.yaw > 0 && outerEarly.pitch === 0, 'The right turn starts before the upward turn.');
+assert.ok(outerEarly.yaw < 0 && outerEarly.pitch === 0, 'The left turn starts before the upward turn.');
 const outerNear = advancePortalGuidance(outerStart, tidal(6.8), tidal(6.3));
 assert.ok(outerNear.pitch > .05 && outerNear.pitch < .1);
 const outerInside = advancePortalGuidance(outerStart, tidal(6.3), tidal(4.5));
-close(outerEarly.yaw + outerNear.yaw + outerInside.yaw, .65);
+assert.ok(outerInside.yaw < -2, 'Passing the first large frames does not end the left turn.');
 close(outerNear.pitch + outerInside.pitch, .48);
+const remaining = advancePortalGuidance(outerStart, tidal(4.5), 90);
+assert.ok(remaining.yaw < -7, 'The sustained sweep continues all the way to the two central boxes.');
+const outerYaw = outerEarly.yaw + outerNear.yaw + outerInside.yaw + remaining.yaw;
+close(outerYaw, totalLeftTurn(tidal(7.4), 90));
+assert.ok(outerYaw < -Math.PI * 3.5 && outerYaw > -Math.PI * 4, 'The journey has a held-key sweep, rather than a small one-time nudge.');
+assert.deepEqual(advancePortalGuidance(outerStart, 90, 28), {yaw: 0, pitch: 0}, 'Guidance finishes beside the main boxes, leaving their centre steady.');
 for(const hz of [30, 60, 120, 144]) {
   const totals = outerTravel(hz);
-  close(totals.yaw, .65); close(totals.pitch, .48);
+  close(totals.yaw, outerYaw); close(totals.pitch, .48);
+}
+
+// In the sustained portion, a second of normal inward travel matches a
+// second holding ArrowLeft exactly. A boost changes travel speed, not route.
+for (const speed of [1, 2.15]) {
+  const route = createPortalGuidance(tidal(7.4), outerProfile);
+  advancePortalGuidance(route, route.entryDistance, 12000);
+  const end = 12000 * Math.exp(-PORTAL_FORWARD_LOG_RATE * speed);
+  close(advancePortalGuidance(route, 12000, end).yaw, -PORTAL_LOOK_RATE * speed);
+}
+for (const distance of [tidal(7.4) * Math.exp(-.2), 90 * Math.exp(.2), 90]) {
+  const epsilon = 1e-5;
+  const before = createPortalGuidance(tidal(7.4), outerProfile);
+  const after = createPortalGuidance(tidal(7.4), outerProfile);
+  advancePortalGuidance(before, before.entryDistance, distance * Math.exp(epsilon));
+  advancePortalGuidance(after, after.entryDistance, distance);
+  const left = advancePortalGuidance(before, distance * Math.exp(epsilon), distance).yaw / epsilon;
+  const right = advancePortalGuidance(after, distance, distance * Math.exp(-epsilon)).yaw / epsilon;
+  close(left, right, .00001);
 }
 const invalidProfile = createPortalGuidance(3600, {turnEndDistance: 10000, riseEndDistance: -1});
 assert.equal(invalidProfile.profile.turnEndDistance, 2);
 assert.equal(invalidProfile.profile.riseEndDistance, 8);
-console.log('PASS: gradual forward-only right/up guidance, frame-rate independent travel, smooth thresholds, bounded rotation, no backtracking accumulation, reusable result, reset and invalid input.');
+console.log('PASS: sustained held-arrow left turn to central boxes, upward passage, frame-rate/input-independent travel, smooth steering endpoints, no backtracking accumulation, reusable result, reset and invalid input.');

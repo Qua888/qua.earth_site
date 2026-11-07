@@ -3,7 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { COSMIC_ZOOM_GAIN, PINCH_MIN_DISTANCE, pinchZoomTarget } from './cosmic-navigation';
-import { createPortalGuidance, advancePortalGuidance } from './portal-guidance';
+import {
+  createPortalGuidance, advancePortalGuidance,
+  PORTAL_LOOK_RATE, PORTAL_FORWARD_LOG_RATE,
+} from './portal-guidance';
 import {
   ASCENSION_DURATION, ASCENSION_START, GUIDE_DIALOGUE,
   cloudRealmShader, createCosmicGuide,
@@ -2487,7 +2490,9 @@ export default function BlackHoleExperience() {
     const alternateCrossDistance = 1.1;
     const alternateMaxDistance = tidalDistance(TIDAL_ZOOM_END);
     const portalRoute = {
-      turnEndDistance: tidalDistance(4.5),
+      // The central cubes have half-widths52/28. Finish the left sweep at
+      // the outer cube's90-unit circumsphere, rather than far outside it.
+      turnEndDistance: 90,
       riseStartDistance: tidalDistance(6.8), riseFullDistance: tidalDistance(6.3),
       riseEaseOutDistance: tidalDistance(5), riseEndDistance: tidalDistance(4.6),
     };
@@ -2956,8 +2961,8 @@ export default function BlackHoleExperience() {
 
       const boost = keys.has('shift') ? 2.15 : 1;
       if (stableReality) {
-        if (keys.has('a') || keys.has('arrowleft')) targetAzimuth -= delta * 0.74 * boost;
-        if (keys.has('d') || keys.has('arrowright')) targetAzimuth += delta * 0.74 * boost;
+        if (keys.has('a') || keys.has('arrowleft')) targetAzimuth -= delta * PORTAL_LOOK_RATE * boost;
+        if (keys.has('d') || keys.has('arrowright')) targetAzimuth += delta * PORTAL_LOOK_RATE * boost;
         if (keys.has('q') || keys.has('arrowdown')) targetElevation -= delta * 0.62 * boost;
         if (keys.has('e') || keys.has('arrowup')) targetElevation += delta * 0.62 * boost;
       }
@@ -2968,8 +2973,8 @@ export default function BlackHoleExperience() {
         if (zoomIn) targetRadius *= Math.exp(-delta * 0.5 * boost * COSMIC_ZOOM_GAIN);
         if (zoomOut) targetRadius *= Math.exp(delta * 0.5 * boost * COSMIC_ZOOM_GAIN);
       } else if (realityPhase === 'alternate') {
-        if (zoomIn) targetAlternateDistance *= Math.exp(-delta * 0.52 * boost);
-        if (zoomOut) targetAlternateDistance *= Math.exp(delta * 0.52 * boost);
+        if (zoomIn) targetAlternateDistance *= Math.exp(-delta * PORTAL_FORWARD_LOG_RATE * boost);
+        if (zoomOut) targetAlternateDistance *= Math.exp(delta * PORTAL_FORWARD_LOG_RATE * boost);
       }
 
       targetRadius = THREE.MathUtils.clamp(targetRadius, cosmicMinRadius, cosmicMaxRadius);
@@ -3413,7 +3418,7 @@ export default function BlackHoleExperience() {
         {ascensionActive
           ? 'Beyond the last star. Meet the golden guide and choose a path.'
           : alternateRealityActive
-          ? 'Portal realm active. Keep pushing forward through the red frames. The path gently turns right, then rises. The central sphere leads into the original QUA experience.'
+          ? 'Portal realm active. Keep pushing forward through the red frames. The path keeps turning left until the two central boxes, rising through the large frames. The central sphere leads into the original QUA experience.'
           : active ? 'Immersive controls active. Press Escape to release the cursor.' : 'Immersive controls inactive.'}
       </p>
     </main>
