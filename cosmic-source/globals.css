@@ -476,6 +476,19 @@ body {
   .controls { padding-top: 8px; padding-bottom: 8px; }
 }
 
+/* The existing .75 scale becomes 1.05: the complete desktop panel and its
+   lettering grow by forty percent while keeping the lower-right anchor. */
+@media (min-width: 761px) and (pointer: fine) {
+  .hud-stack { transform: scale(1.05); }
+}
+@media (min-width: 761px) and (pointer: fine) and (max-height: 540px) {
+  .controls {
+    max-height: calc((100dvh - 122px - env(safe-area-inset-bottom)) / 1.05);
+    overflow-y: auto;
+    pointer-events: auto;
+  }
+}
+
 
 /* Arrival choices sit over the live black hole; the scene keeps its own motion. */
 .arrival-layer {
@@ -489,6 +502,7 @@ body {
   padding: max(24px, 6vh) max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom));
   background: linear-gradient(0deg, rgba(0, 0, 0, .55), transparent 72%);
   overscroll-behavior: contain;
+  cursor: pointer;
 }
 .arrival-panel {
   width: min(470px, 100%);
@@ -498,6 +512,7 @@ body {
   color: #f5e9e0;
   text-align: center;
   animation: arrival-appear 450ms ease both;
+  cursor: default;
 }
 .arrival-brand {
   display: block;

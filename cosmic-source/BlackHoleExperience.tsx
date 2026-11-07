@@ -2262,6 +2262,7 @@ type ArrivalStage = 'choice' | 'exploring';
 export default function BlackHoleExperience() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arrivalPanelRef = useRef<HTMLElement>(null);
+  const arrivalSpacePressRef = useRef<{ id: number; x: number; y: number; dragged: boolean } | null>(null);
   const arrivalStageRef = useRef<ArrivalStage>('choice');
   const [arrivalStage, setArrivalStage] = useState<ArrivalStage>('choice');
   const [exploreHint, setExploreHint] = useState(false);
@@ -2893,7 +2894,7 @@ export default function BlackHoleExperience() {
       if (idle) {
         const idleCadence = 0.86 + 0.14 * (0.5 + 0.5 * Math.sin(idleBeatPhase));
         const idleOrbitStep = delta * (idleCameraBpm / 60) * 0.024
-          * idleFlowSpeed * idleCadence * idleViewBlend * uniforms.uMotion.value;
+          * idleFlowSpeed * 1.09 * idleCadence * idleViewBlend * uniforms.uMotion.value;
         targetAzimuth += idleOrbitStep;
       }
 
@@ -3175,7 +3176,25 @@ export default function BlackHoleExperience() {
       {!supported && <div className="fallback" role="alert">This browser cannot render the live space.</div>}
 
       {arrivalOpen && (
-        <div className="arrival-layer">
+        <div
+          className="arrival-layer"
+          onPointerDown={(event) => {
+            arrivalSpacePressRef.current = event.target === event.currentTarget && event.isPrimary && event.button === 0
+              ? { id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false }
+              : null;
+          }}
+          onPointerMove={(event) => {
+            const press = arrivalSpacePressRef.current;
+            if (press?.id === event.pointerId && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 8) press.dragged = true;
+          }}
+          onPointerCancel={() => { arrivalSpacePressRef.current = null; }}
+          onClick={(event) => {
+            const press = arrivalSpacePressRef.current;
+            arrivalSpacePressRef.current = null;
+            if (event.target === event.currentTarget && event.button === 0 && press && !press.dragged
+              && Math.hypot(event.clientX - press.x, event.clientY - press.y) <= 8) explore();
+          }}
+        >
           <section
             ref={arrivalPanelRef}
             className={`arrival-panel arrival-panel--${arrivalStage}`}
