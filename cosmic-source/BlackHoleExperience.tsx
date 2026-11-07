@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { COSMIC_ZOOM_GAIN, PINCH_MIN_DISTANCE, pinchZoomTarget } from './cosmic-navigation';
+import { createPortalGuidance, advancePortalGuidance } from './portal-guidance';
 import {
   ASCENSION_DURATION, ASCENSION_START, GUIDE_DIALOGUE,
   cloudRealmShader, createCosmicGuide,
@@ -18,8 +19,10 @@ const TIDAL_ZOOM_END = 7.4;
 const ORIGINAL_QUA_SITE_URL = 'https://qua.earth/original/index.html';
 const MOUSE_DRAG_SENSITIVITY = 0.0042;
 const POINTER_LOCK_MOUSE_SENSITIVITY = 0.002205;
+const BOX_REALM_NEAR_DISTANCE = 180;
+const tidalDistance = (journey: number) => BOX_REALM_NEAR_DISTANCE * Math.exp(journey);
 const BOX_REALM_ENTRY = {
-  distance: 180,
+  distance: tidalDistance(TIDAL_ZOOM_END),
   azimuth: 0.643,
   elevation: 0.164,
   boxYaw: 2.212,
@@ -2482,7 +2485,14 @@ export default function BlackHoleExperience() {
     const idleFarRadius = COSMIC_DETAIL_RADIUS;
     const alternateEntryDistance = BOX_REALM_ENTRY.distance;
     const alternateCrossDistance = 1.1;
-    const alternateMaxDistance = alternateEntryDistance * Math.exp(TIDAL_ZOOM_END);
+    const alternateMaxDistance = tidalDistance(TIDAL_ZOOM_END);
+    const portalRoute = {
+      turnEndDistance: tidalDistance(4.5),
+      riseStartDistance: tidalDistance(6.8), riseFullDistance: tidalDistance(6.3),
+      riseEaseOutDistance: tidalDistance(5), riseEndDistance: tidalDistance(4.6),
+    };
+    let portalGuidance = createPortalGuidance(alternateEntryDistance, portalRoute);
+    const portalTurn = { yaw: 0, pitch: 0 };
     const idleBpm = MUSIC_BPM;
     const idleCameraBpm = MUSIC_BPM / 4;
     const idleFlowSpeed = 1.04;
@@ -2520,6 +2530,8 @@ export default function BlackHoleExperience() {
     let visible = !document.hidden;
     let lastFrameTime = performance.now();
     let lastInteractionTime = performance.now();
+    let lastLookInputTime = -Infinity;
+    let nextNavigationTelemetry = 0;
     const navigationKeys = new Set(['a', 'd', 'w', 's', 'q', 'e', 'arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'r']);
 
     const markInteraction = () => { lastInteractionTime = performance.now(); };
@@ -2572,6 +2584,7 @@ export default function BlackHoleExperience() {
       boxYaw = BOX_REALM_ENTRY.boxYaw;
       boxPitch = BOX_REALM_ENTRY.boxPitch;
       boxTurn.set(boxYaw, boxPitch);
+      portalGuidance = createPortalGuidance(alternateEntryDistance, portalRoute);
       updateBasis();
     };
 
@@ -2579,7 +2592,7 @@ export default function BlackHoleExperience() {
       if (arrivalStageRef.current !== 'exploring') return;
       if (document.pointerLockElement !== canvas) return;
       if (realityPhase !== 'cosmic' && realityPhase !== 'alternate') return;
-      if (event.movementX !== 0 || event.movementY !== 0) markInteraction();
+      if (event.movementX !== 0 || event.movementY !== 0) { markInteraction(); lastLookInputTime = performance.now(); }
       playOrbitGesture(event.movementX, event.movementY);
       targetAzimuth -= event.movementX * POINTER_LOCK_MOUSE_SENSITIVITY;
       targetElevation -= event.movementY * POINTER_LOCK_MOUSE_SENSITIVITY;
@@ -2690,7 +2703,7 @@ export default function BlackHoleExperience() {
         const dy = event.clientY - previousPoint.y;
         lastPointerX = event.clientX;
         lastPointerY = event.clientY;
-        if (dx !== 0 || dy !== 0) markInteraction();
+        if (dx !== 0 || dy !== 0) { markInteraction(); lastLookInputTime = performance.now(); }
         playOrbitGesture(dx, dy);
         targetAzimuth -= dx * 0.004;
         targetElevation -= dy * 0.004;
@@ -2701,7 +2714,7 @@ export default function BlackHoleExperience() {
       const dy = event.clientY - lastPointerY;
       lastPointerX = event.clientX;
       lastPointerY = event.clientY;
-      if (dx !== 0 || dy !== 0) markInteraction();
+      if (dx !== 0 || dy !== 0) { markInteraction(); lastLookInputTime = performance.now(); }
       playOrbitGesture(dx, dy);
       targetAzimuth -= dx * MOUSE_DRAG_SENSITIVITY;
       targetElevation -= dy * MOUSE_DRAG_SENSITIVITY;
@@ -2992,6 +3005,16 @@ export default function BlackHoleExperience() {
       }
 
       if (realityPhase === 'alternate') {
+        advancePortalGuidance(portalGuidance, previousAlternateDistance, alternateDistance, portalTurn);
+        const manualLook = keys.has('a') || keys.has('d') || keys.has('q') || keys.has('e')
+          || keys.has('arrowleft') || keys.has('arrowright') || keys.has('arrowup') || keys.has('arrowdown')
+          || now - lastLookInputTime < 600;
+        if (!manualLook && !reducedMotion) {
+          // Only actual inward travel spends the route's steering. The normal
+          // orbit easing keeps keyboard, wheel and pinch movement equally calm.
+          targetAzimuth += portalTurn.yaw;
+          targetElevation = THREE.MathUtils.clamp(targetElevation + portalTurn.pitch, -1.15, 1.15);
+        }
         const signedYaw = Math.atan2(
           Math.sin(azimuth - previousAzimuth),
           Math.cos(azimuth - previousAzimuth),
@@ -3000,8 +3023,8 @@ export default function BlackHoleExperience() {
           Math.sin(elevation - previousElevation),
           Math.cos(elevation - previousElevation),
         );
-        const signedTravel = Math.min(previousAlternateDistance, alternateEntryDistance)
-          - Math.min(alternateDistance, alternateEntryDistance);
+        const signedTravel = Math.min(previousAlternateDistance, BOX_REALM_NEAR_DISTANCE)
+          - Math.min(alternateDistance, BOX_REALM_NEAR_DISTANCE);
         const roomMotion = uniforms.uMotion.value;
         boxYaw += signedYaw * 0.96 + signedTravel * 0.11 + delta * 0.16 * roomMotion;
         boxPitch += signedPitch * 0.84 + signedTravel * 0.045 + delta * 0.09 * roomMotion;
@@ -3100,6 +3123,13 @@ export default function BlackHoleExperience() {
 
       uniforms.uRealityMix.value = realityMix;
       uniforms.uAltDistance.value = alternateDistance;
+      if (now >= nextNavigationTelemetry) {
+        canvas.dataset.realm = realityPhase;
+        canvas.dataset.realmDistance = alternateDistance.toFixed(2);
+        canvas.dataset.realmAzimuth = azimuth.toFixed(4);
+        canvas.dataset.realmElevation = elevation.toFixed(4);
+        nextNavigationTelemetry = now + 125;
+      }
       renderer.render(scene, camera);
       if (realityPhase === 'guide' || (realityPhase === 'collapsing' && ascensionTime > 5.4)) {
         const opacity = THREE.MathUtils.smoothstep(ascensionTime, 5.4, ASCENSION_DURATION);
@@ -3218,8 +3248,9 @@ export default function BlackHoleExperience() {
         </div>
       )}
 
-      {!arrivalOpen && !ascensionActive && <div className={`explore-whisper${exploreHint ? ' explore-whisper--visible' : ''}`}>
-        <p role="status">Drift a little. The center is a doorway.</p>
+      {!arrivalOpen && !ascensionActive && <div className={`explore-whisper${exploreHint || alternateRealityActive ? ' explore-whisper--visible' : ''}${alternateRealityActive ? ' explore-whisper--portal' : ''}`}>
+        <p role="status">{alternateRealityActive ? 'Keep pushing forward…' : 'Explore, expand, evolve, enjoy. Your center is your portal.'}</p>
+        {alternateRealityActive && <span className="portal-travel-hint"><span className="portal-key-hint">Hold W · scroll forward</span><span className="portal-touch-hint">Pinch outward to move closer</span></span>}
         <a href={ORIGINAL_QUA_SITE_URL}>Enter main site <span aria-hidden="true">↗</span></a>
       </div>}
 
@@ -3286,8 +3317,8 @@ export default function BlackHoleExperience() {
             <>
               <dl className="desktop-controls">
                 <div><dt>Orbit</dt><dd>Mouse <span>/</span> <kbd>&#8593;&#8595;&#8592;&#8594;</kbd></dd></div>
-                <div><dt>Enter sphere</dt><dd><kbd>W</kbd></dd></div>
-                <div><dt>Retreat to ocean</dt><dd><kbd>S</kbd></dd></div>
+                <div><dt>Travel forward</dt><dd><kbd>W</kbd></dd></div>
+                <div><dt>Drift back</dt><dd><kbd>S</kbd></dd></div>
                 <div><dt>Recenter</dt><dd><kbd>R</kbd></dd></div>
                 <div><dt>Release</dt><dd><kbd>ESC</kbd></dd></div>
               </dl>
@@ -3382,7 +3413,7 @@ export default function BlackHoleExperience() {
         {ascensionActive
           ? 'Beyond the last star. Meet the golden guide and choose a path.'
           : alternateRealityActive
-          ? 'Portal realm active. Move forward through the solid-black sphere to continue into the original QUA experience.'
+          ? 'Portal realm active. Keep pushing forward through the red frames. The path gently turns right, then rises. The central sphere leads into the original QUA experience.'
           : active ? 'Immersive controls active. Press Escape to release the cursor.' : 'Immersive controls inactive.'}
       </p>
     </main>
