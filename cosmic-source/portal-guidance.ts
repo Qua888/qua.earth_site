@@ -3,8 +3,8 @@ const CLOSE_DISTANCE = 2;
 // Match holding ArrowLeft while W moves inward. Integrating log-distance
 // gives wheel/pinch travellers the same continuous sweep without a timer.
 export const PORTAL_LOOK_RATE = .74;
+export const PORTAL_PITCH_RATE = .62;
 export const PORTAL_FORWARD_LOG_RATE = .52;
-const LEFT_TURN_PER_LOG_DISTANCE = -PORTAL_LOOK_RATE / PORTAL_FORWARD_LOG_RATE;
 const TURN_RAMP_DISTANCE = .2;
 const MAX_PITCH = .48;
 const RISE_START = 105;
@@ -26,6 +26,8 @@ export type PortalGuidanceOptions = {
   riseFullDistance?: number;
   riseEaseOutDistance?: number;
   riseEndDistance?: number;
+  sustainedRiseStartDistance?: number;
+  sustainedRiseEndDistance?: number;
 };
 
 /** Start a fresh route without modifying the traveller's current view. */
@@ -41,24 +43,36 @@ export function createPortalGuidance(
     riseFullDistance: options.riseFullDistance ?? RISE_FULL,
     riseEaseOutDistance: options.riseEaseOutDistance ?? RISE_EASE_OUT,
     riseEndDistance: options.riseEndDistance ?? RISE_END,
+    sustainedRiseStartDistance: options.sustainedRiseStartDistance ?? 0,
+    sustainedRiseEndDistance: options.sustainedRiseEndDistance ?? 1.1,
   };
   const turnEnd = Number.isFinite(candidate.turnEndDistance)
     && candidate.turnEndDistance > 0 && candidate.turnEndDistance < entry
     ? candidate.turnEndDistance : CLOSE_DISTANCE;
-  const validRise = Object.values(candidate).every(Number.isFinite)
+  const validRise = [candidate.riseStartDistance, candidate.riseFullDistance,
+    candidate.riseEaseOutDistance, candidate.riseEndDistance].every(Number.isFinite)
     && candidate.riseStartDistance > candidate.riseFullDistance
     && candidate.riseFullDistance > candidate.riseEaseOutDistance
     && candidate.riseEaseOutDistance > candidate.riseEndDistance
     && candidate.riseEndDistance > 0;
-  const profile = validRise ? {...candidate, turnEndDistance: turnEnd} : {
+  const validSustainedRise = Number.isFinite(candidate.sustainedRiseStartDistance)
+    && Number.isFinite(candidate.sustainedRiseEndDistance)
+    && candidate.sustainedRiseStartDistance > candidate.sustainedRiseEndDistance
+    && candidate.sustainedRiseEndDistance >= 1.1;
+  const sustainedRise = {
+    sustainedRiseStartDistance: validSustainedRise ? candidate.sustainedRiseStartDistance : 0,
+    sustainedRiseEndDistance: validSustainedRise ? candidate.sustainedRiseEndDistance : 1.1,
+  };
+  const profile = validRise ? {...candidate, ...sustainedRise, turnEndDistance: turnEnd} : {
     turnEndDistance: turnEnd, riseStartDistance: RISE_START,
     riseFullDistance: RISE_FULL, riseEaseOutDistance: RISE_EASE_OUT,
-    riseEndDistance: RISE_END,
+    riseEndDistance: RISE_END, ...sustainedRise,
   };
   return {entryDistance: entry, closestDistance: entry, profile};
 }
 
-function yawAt(distance: number, entry: number, end: number) {
+function sustainedTurnAt(distance: number, entry: number, end: number, rate: number) {
+  if (entry <= end) return 0;
   const span = Math.log(entry / end);
   const travel = Math.max(0, Math.min(span, Math.log(entry / distance)));
   const ramp = Math.min(TURN_RAMP_DISTANCE, span * .5);
@@ -71,7 +85,7 @@ function yawAt(distance: number, entry: number, end: number) {
     const t = clamp01((travel - span + ramp) / ramp);
     integral = span - ramp * 1.5 + ramp * (t - smoothIntegral(t));
   }
-  return LEFT_TURN_PER_LOG_DISTANCE * integral;
+  return rate / PORTAL_FORWARD_LOG_RATE * integral;
 }
 
 function pitchAt(distance: number, profile: Required<PortalGuidanceOptions>) {
@@ -90,7 +104,9 @@ function pitchAt(distance: number, profile: Required<PortalGuidanceOptions>) {
     const t = clamp01((travel - rampIn - middle) / rampOut);
     integral = rampIn * .5 + middle + rampOut * (t - smoothIntegral(t));
   }
-  return MAX_PITCH * integral / (rampIn * .5 + middle + rampOut * .5);
+  return MAX_PITCH * integral / (rampIn * .5 + middle + rampOut * .5)
+    + sustainedTurnAt(distance, profile.sustainedRiseStartDistance,
+      profile.sustainedRiseEndDistance, PORTAL_PITCH_RATE);
 }
 
 /**
@@ -111,8 +127,8 @@ export function advancePortalGuidance(
     || previousDistance <= 0 || distance <= 0 || distance >= previousDistance) return target;
   const closest = Math.max(1.1, Math.min(state.entryDistance, distance, state.closestDistance));
   if (closest >= state.closestDistance) return target;
-  target.yaw = yawAt(closest, state.entryDistance, state.profile.turnEndDistance)
-    - yawAt(state.closestDistance, state.entryDistance, state.profile.turnEndDistance);
+  target.yaw = sustainedTurnAt(closest, state.entryDistance, state.profile.turnEndDistance, -PORTAL_LOOK_RATE)
+    - sustainedTurnAt(state.closestDistance, state.entryDistance, state.profile.turnEndDistance, -PORTAL_LOOK_RATE);
   target.pitch = pitchAt(closest, state.profile) - pitchAt(state.closestDistance, state.profile);
   state.closestDistance = closest;
   return target;

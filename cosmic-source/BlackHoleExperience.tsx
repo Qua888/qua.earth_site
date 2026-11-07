@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { COSMIC_ZOOM_GAIN, PINCH_MIN_DISTANCE, pinchZoomTarget } from './cosmic-navigation';
 import {
   createPortalGuidance, advancePortalGuidance,
-  PORTAL_LOOK_RATE, PORTAL_FORWARD_LOG_RATE,
+  PORTAL_LOOK_RATE, PORTAL_PITCH_RATE, PORTAL_FORWARD_LOG_RATE,
 } from './portal-guidance';
 import {
   ASCENSION_DURATION, ASCENSION_START, GUIDE_DIALOGUE,
@@ -2490,11 +2490,12 @@ export default function BlackHoleExperience() {
     const alternateCrossDistance = 1.1;
     const alternateMaxDistance = tidalDistance(TIDAL_ZOOM_END);
     const portalRoute = {
-      // The central cubes have half-widths52/28. Finish the left sweep at
-      // the outer cube's90-unit circumsphere, rather than far outside it.
-      turnEndDistance: 90,
+      // Keep the left key's sweep through the central boxes. As their outer
+      // silhouette fills the view, add the up key's climb until the crossing.
+      turnEndDistance: alternateCrossDistance,
       riseStartDistance: tidalDistance(6.8), riseFullDistance: tidalDistance(6.3),
       riseEaseOutDistance: tidalDistance(5), riseEndDistance: tidalDistance(4.6),
+      sustainedRiseStartDistance: 180, sustainedRiseEndDistance: alternateCrossDistance,
     };
     let portalGuidance = createPortalGuidance(alternateEntryDistance, portalRoute);
     const portalTurn = { yaw: 0, pitch: 0 };
@@ -2963,8 +2964,8 @@ export default function BlackHoleExperience() {
       if (stableReality) {
         if (keys.has('a') || keys.has('arrowleft')) targetAzimuth -= delta * PORTAL_LOOK_RATE * boost;
         if (keys.has('d') || keys.has('arrowright')) targetAzimuth += delta * PORTAL_LOOK_RATE * boost;
-        if (keys.has('q') || keys.has('arrowdown')) targetElevation -= delta * 0.62 * boost;
-        if (keys.has('e') || keys.has('arrowup')) targetElevation += delta * 0.62 * boost;
+        if (keys.has('q') || keys.has('arrowdown')) targetElevation -= delta * PORTAL_PITCH_RATE * boost;
+        if (keys.has('e') || keys.has('arrowup')) targetElevation += delta * PORTAL_PITCH_RATE * boost;
       }
 
       const zoomIn = keys.has('w') && !keys.has('s') && !suppressZoomUntilKeyUp;
@@ -3018,7 +3019,7 @@ export default function BlackHoleExperience() {
           // Only actual inward travel spends the route's steering. The normal
           // orbit easing keeps keyboard, wheel and pinch movement equally calm.
           targetAzimuth += portalTurn.yaw;
-          targetElevation = THREE.MathUtils.clamp(targetElevation + portalTurn.pitch, -1.15, 1.15);
+          targetElevation += portalTurn.pitch;
         }
         const signedYaw = Math.atan2(
           Math.sin(azimuth - previousAzimuth),
@@ -3418,7 +3419,7 @@ export default function BlackHoleExperience() {
         {ascensionActive
           ? 'Beyond the last star. Meet the golden guide and choose a path.'
           : alternateRealityActive
-          ? 'Portal realm active. Keep pushing forward through the red frames. The path keeps turning left until the two central boxes, rising through the large frames. The central sphere leads into the original QUA experience.'
+          ? 'Portal realm active. Keep pushing forward through the red frames. The path keeps turning left, then climbs continuously through the two central boxes into the portal. The central sphere leads into the original QUA experience.'
           : active ? 'Immersive controls active. Press Escape to release the cursor.' : 'Immersive controls inactive.'}
       </p>
     </main>
