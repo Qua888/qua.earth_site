@@ -23,7 +23,7 @@ const ORIGINAL_QUA_SITE_URL = 'https://qua.earth/original/index.html';
 const MOUSE_DRAG_SENSITIVITY = 0.0042;
 const POINTER_LOCK_MOUSE_SENSITIVITY = 0.002205;
 const BOX_REALM_NEAR_DISTANCE = 180;
-const PORTAL_TRANSITION_SECONDS = 1.35;
+const PORTAL_TRANSITION_SECONDS = 4.05;
 const PORTAL_ARRIVAL_KEY = 'qua.portal-arrival';
 const tidalDistance = (journey: number) => BOX_REALM_NEAR_DISTANCE * Math.exp(journey);
 const BOX_REALM_ENTRY = {
@@ -1175,11 +1175,11 @@ const fragmentShader = /* glsl */ `
     if (uRealityMix < 0.001 || uRealityMix > 0.999) return color;
 
     // Close into the same central seed from which the next world unfolds.
-    // A short dark interval conceals the existing halfway camera reset.
+    // A luminous interval conceals the existing halfway camera reset.
     float closing = 1.0 - smoothstep(0.0, 0.48, uRealityMix);
     float opening = smoothstep(0.52, 1.0, uRealityMix);
     float aperture = max(closing, opening);
-    if (uMotion < 0.5) return color * aperture;
+    if (uMotion < 0.5) return mix(vec3(0.87, 0.79, 0.94), color, aperture);
 
     float radius = (length(vec2(uResolution.x / uResolution.y, 1.0)) + 0.22)
       * pow(aperture, 1.12);
@@ -1193,11 +1193,17 @@ const fragmentShader = /* glsl */ `
       * smoothstep(0.0, 0.025, radius);
     float shell = exp(-pow(edge / 0.025, 2.0))
       * smoothstep(0.015, 0.12, radius) * envelope;
-    vec3 pearl = mix(vec3(0.35, 0.68, 0.72), vec3(0.76, 0.46, 0.72),
+    vec3 pearl = mix(vec3(0.55, 1.0, 0.86), vec3(1.0, 0.58, 0.83),
       0.5 + 0.5 * sin(angle * 2.0 - uRealityMix * 8.0));
-    vec3 seed = vec3(0.024, 0.034, 0.048) * exp(-r * 22.0)
-      * (1.0 - aperture);
-    return color * inside + pearl * shell * 0.2 + seed;
+    float chroma = 0.5 + 0.5 * sin(screenPoint.x * 1.2 + screenPoint.y * 0.8
+      + uRealityMix * 3.0);
+    vec3 lightField = mix(vec3(0.42, 0.25, 0.68), vec3(0.34, 0.74, 0.63), chroma);
+    lightField = mix(lightField, vec3(0.94, 0.44, 0.48),
+      (0.5 + 0.5 * sin(screenPoint.y * 1.4 - uRealityMix * 4.0)) * 0.38);
+    lightField = mix(lightField, vec3(0.98, 0.9, 1.0), exp(-r * r * 1.8) * 0.8);
+    float halo = exp(-abs(edge) * 11.0) * envelope;
+    return color * inside + lightField * (1.0 - inside)
+      + pearl * (shell * 0.55 + halo * 0.15);
   }
 
   void main() {

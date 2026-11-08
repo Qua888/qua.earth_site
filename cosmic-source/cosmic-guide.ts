@@ -13,6 +13,31 @@ export const GUIDE_DIALOGUE = {
   },
 } as const;
 
+// Periodic analytic hoops keep the seam and both rounded ends smooth without
+// increasing the existing tube budget. Every meridian shares the egg's center.
+export class GuideFieldLoop extends THREE.Curve<THREE.Vector3> {
+  private readonly azimuth: number;
+  constructor(azimuth: number) { super(); this.azimuth = azimuth; }
+
+  getPoint(t: number, target = new THREE.Vector3()) {
+    const angle = t * Math.PI * 2;
+    const radial = Math.sin(angle) * 0.84;
+    return target.set(Math.cos(this.azimuth) * radial, Math.cos(angle) * 1.50,
+      Math.sin(this.azimuth) * radial);
+  }
+
+  getPointAt(t: number, target = new THREE.Vector3()) { return this.getPoint(t, target); }
+
+  getTangent(t: number, target = new THREE.Vector3()) {
+    const angle = t * Math.PI * 2;
+    const radial = Math.cos(angle) * 0.84;
+    return target.set(Math.cos(this.azimuth) * radial, -Math.sin(angle) * 1.50,
+      Math.sin(this.azimuth) * radial).normalize();
+  }
+
+  getTangentAt(t: number, target = new THREE.Vector3()) { return this.getTangent(t, target); }
+}
+
 // A small, genuinely three-dimensional guide, not a video or another WebGL
 // context. Only drawn while the white realm is visible; no lights or shadows.
 export function createCosmicGuide() {
@@ -116,22 +141,13 @@ export function createCosmicGuide() {
   aura.renderOrder = 1;
   avatar.add(aura);
 
-  // Connected meridian streams return through the inner beam, expand
-  // outside the shell, and rise into the ether above it in the same draw.
+  // Six closed meridian hoops surround the shell on the same central axis.
   const fieldParts: THREE.BufferGeometry[] = [];
   const beam = new THREE.CylinderGeometry(0.010, 0.020, 3.3, 6, 1);
   beam.translate(0, 0.45, 0);
   fieldParts.push(beam);
   for (let meridian = 0; meridian < 6; meridian++) {
-    const phi = meridian * Math.PI / 3;
-    const meridianPath = [
-      [0.035, 2.03], [0.025, 1.28], [0.04, 0.3], [0.10, -0.65],
-      [0.34, -1.12], [0.69, -0.72], [0.84, 0.05], [0.68, 0.95],
-      [0.38, 1.67], [0.10, 2.02],
-    ];
-    const points = meridianPath.map(([radial, y]) => new THREE.Vector3(
-      Math.cos(phi) * radial, y, Math.sin(phi) * radial));
-    fieldParts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 32, 0.009, 3, true));
+    fieldParts.push(new THREE.TubeGeometry(new GuideFieldLoop(meridian * Math.PI / 6), 32, 0.009, 3, true));
   }
   const fieldPositions: number[] = [];
   for (const part of fieldParts) {

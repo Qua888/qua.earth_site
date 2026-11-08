@@ -30,7 +30,7 @@ touch-action:manipulation;
 
 /* A one-shot continuation of the black-hole crossing. */
 body.portal-arrival{
-animation:portal-emerge 1100ms cubic-bezier(.16,.6,.24,1) both;
+animation:portal-emerge 3300ms cubic-bezier(.16,.6,.24,1) both;
 will-change:clip-path;
 }
 @keyframes portal-emerge{
@@ -571,7 +571,7 @@ transform:scale(1.05);
     const body = document.body;
     const root = document.documentElement;
     const background = root.style.background;
-    root.style.background = '#000';
+    root.style.background = 'radial-gradient(circle at 50% 50%, #f4eaff 0%, #dca1cb 24%, #c3e8d9 55%, #bdafdf 100%)';
     body.classList.add('portal-arrival');
     const finish = (event) => {
       if (event && event.target !== body) return;
@@ -581,7 +581,7 @@ transform:scale(1.05);
       clearTimeout(timer);
     };
     body.addEventListener('animationend', finish);
-    const timer = setTimeout(finish, 1500);
+    const timer = setTimeout(finish, 3800);
   } catch {
     // An ordinary visit remains unchanged if browser storage is unavailable.
   }
