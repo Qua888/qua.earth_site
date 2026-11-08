@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-500 -500 1000 1000">
+  <defs>
+    <radialGradient id="depth">
+      <stop stop-color="#fff3c1"/>
+      <stop offset=".045" stop-color="#aa7852"/>
+      <stop offset=".2" stop-color="#402832"/>
+      <stop offset=".7" stop-color="#bd9254"/>
+      <stop offset="1" stop-color="#392333"/>
+    </radialGradient>
+    <linearGradient id="spectrum" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#efcf7d"/>
+      <stop offset=".3" stop-color="#cd97bc"/>
+      <stop offset=".6" stop-color="#9fd0b4"/>
+      <stop offset="1" stop-color="#f4c68b"/>
+    </linearGradient>
+    <pattern id="etching" width="120" height="140" patternUnits="userSpaceOnUse">
+      <path d="M0 70 40 0 80 70 40 140Z M40 70 80 0 120 70 80 140Z M0 70H120M40 0V140M80 0V140" fill="none" stroke="#fff0b5" stroke-width=".8" opacity=".25"/>
+    </pattern>
+    <polygon id="rib" points="0,-460 325,-325 460,0 325,325 0,460 -325,325 -460,0 -325,-325"/>
+  </defs>
+  <path fill="url(#depth)" d="M-500-500H500V500H-500Z"/>
+  <g opacity=".3">
+    <path fill="#f2ce80" d="M0 0-500-500H0Z M0 0 500 0V500Z"/>
+    <path fill="#c292c2" d="M0 0 0-500H500Z M0 0 0 500H-500Z"/>
+    <path fill="#9ccbb1" d="M0 0 500-500V0Z M0 0-500 500V0Z"/>
+    <path fill="#e6a57c" d="M0 0 500 500H0Z M0 0-500 0V-500Z"/>
+  </g>
+  <path fill="url(#etching)" d="M-500-500H500V500H-500Z"/>
+  <g fill="none" stroke="url(#spectrum)" stroke-width="1.2" opacity=".8">
+    <use href="#rib"/>
+    <use href="#rib" transform="scale(.69) rotate(4)"/>
+    <use href="#rib" transform="scale(.46) rotate(8)"/>
+    <use href="#rib" transform="scale(.3) rotate(12)"/>
+    <use href="#rib" transform="scale(.19) rotate(16)"/>
+    <use href="#rib" transform="scale(.11) rotate(20)"/>
+    <use href="#rib" transform="scale(.055) rotate(24)"/>
+    <path d="M0 0 0-500M0 0 500-500M0 0 500 0M0 0 500 500M0 0 0 500M0 0-500 500M0 0-500 0M0 0-500-500" opacity=".5"/>
+  </g>
+  <circle r="9" fill="#fff4cf"/>
+</svg>

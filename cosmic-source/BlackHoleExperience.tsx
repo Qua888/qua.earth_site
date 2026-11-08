@@ -1171,39 +1171,86 @@ const fragmentShader = /* glsl */ `
 
   ${cloudRealmShader}
 
+  float portalCrystalFold(vec3 p) {
+    // The guide pyramid's exact four-fold engraving, sampled once per wall.
+    float f = 0.0; float weight = 0.5;
+    for (int i = 0; i < 4; i++) {
+      p = abs(p) / clamp(dot(p, p), 0.28, 2.0) - vec3(0.72, 0.63, 0.65);
+      f += exp(-abs(p.x + p.y - p.z) * 12.0) * weight;
+      weight *= 0.52;
+    }
+    return f;
+  }
+
+  float portalOpening() {
+    return max(1.0 - smoothstep(0.0, 0.34, uRealityMix),
+      smoothstep(0.66, 1.0, uRealityMix));
+  }
+
+  vec3 portalTunnel(vec2 screenPoint) {
+    if (uMotion < 0.5) return vec3(0.86, 0.73, 0.46);
+    float r = length(screenPoint);
+    float travel = uRealityMix * 8.0;
+    // An analytic tapered octagonal wall: perspective depth increases toward
+    // the pupil. No march, texture, extra scene or extra render pass.
+    float depth = -log(max(r, 0.018)) * 1.35;
+    float twist = travel * 0.13 + depth * 0.22;
+    float c = cos(twist), s = sin(twist);
+    vec2 q = mat2(c, -s, s, c) * screenPoint;
+    float angle = atan(q.y, q.x + 0.0000001);
+    float facetAngle = floor(angle / 0.7853981634 + 0.5) * 0.7853981634;
+    vec2 facet = vec2(cos(facetAngle), sin(facetAngle));
+    depth = -log(max(dot(q, facet), 0.018)) * 1.35;
+    vec3 ray = normalize(vec3(q, 1.62));
+    float hit = 1.15 / max(dot(ray.xy, facet) + ray.z * 0.075, 0.075);
+    vec3 wall = ray * hit;
+    vec3 n = normalize(vec3(-facet, -0.075));
+    vec3 reflected = reflect(ray, n);
+    float facing = abs(dot(n, -ray));
+    float light = max(dot(n, normalize(vec3(-0.4, 0.8, 1.0))), 0.0);
+
+    vec3 local = vec3(wall.xy, depth - travel * 0.6);
+    vec3 flowing = local * 2.1;
+    flowing.x += sin(local.y * 1.6 + travel * 0.19) * 0.22;
+    flowing.y -= travel * 0.09;
+    flowing.z += sin(local.x * 1.5 - travel * 0.13) * 0.16;
+    float fold = portalCrystalFold(flowing);
+    vec3 gold = mix(vec3(0.36, 0.22, 0.075), vec3(1.0, 0.84, 0.43), 0.3 + light * 0.7);
+    vec3 rainbow = 0.56 + 0.44 * cos(vec3(0.0, 2.1, 4.2)
+      + reflected.y * 4.5 + reflected.x * 2.7 + fold * 7.0 + travel * 0.06);
+    float chrome = pow(0.5 + 0.5 * sin(reflected.y * 9.0 + reflected.x * 3.0), 6.0);
+    vec3 crystal = mix(gold, rainbow, 0.17 + fold * 0.34 + pow(1.0 - facing, 1.8) * 0.23);
+    crystal = mix(crystal * 0.72, crystal + vec3(0.25), chrome * 0.65);
+    float sheen = pow(0.5 + 0.5 * sin(local.y * 6.0
+      + local.x * 3.0 - travel * 0.36 + fold * 4.0), 5.0);
+    crystal += rainbow * fold * 0.16 + mix(gold, rainbow, 0.38) * sheen * 0.11;
+
+    // Receding octagonal ribs and long facet seams make the depth readable.
+    float ribPhase = depth * 4.8 - travel * 1.65;
+    float ribWidth = max(fwidth(ribPhase) * 1.25, 0.025);
+    float ribs = 1.0 - smoothstep(0.0, ribWidth, abs(sin(ribPhase)));
+    float facetPhase = sin(angle * 4.0 + 1.5707963268);
+    float seams = 1.0 - smoothstep(0.0, max(fwidth(facetPhase) * 1.4, 0.014), abs(facetPhase));
+    float distant = smoothstep(0.2, 4.7, depth);
+    crystal *= mix(0.94, 0.24, distant);
+    crystal += mix(gold, rainbow, 0.34) * (ribs * 0.45 + seams * 0.38)
+      * (1.0 - smoothstep(3.7, 5.3, depth));
+    float pupil = exp(-r * r / 0.0012);
+    crystal += vec3(1.0, 0.89, 0.64) * pupil * 1.3;
+    return crystal;
+  }
+
   vec3 portalAperture(vec3 color, vec2 screenPoint) {
     if (uRealityMix < 0.001 || uRealityMix > 0.999) return color;
-
-    // Close into the same central seed from which the next world unfolds.
-    // A luminous interval conceals the existing halfway camera reset.
-    float closing = 1.0 - smoothstep(0.0, 0.48, uRealityMix);
-    float opening = smoothstep(0.52, 1.0, uRealityMix);
-    float aperture = max(closing, opening);
-    if (uMotion < 0.5) return mix(vec3(0.87, 0.79, 0.94), color, aperture);
-
+    float aperture = portalOpening();
+    if (uMotion < 0.5) return mix(portalTunnel(screenPoint), color, aperture);
     float radius = (length(vec2(uResolution.x / uResolution.y, 1.0)) + 0.22)
       * pow(aperture, 1.12);
-    float r = length(screenPoint);
-    float angle = atan(screenPoint.y, screenPoint.x);
-    float tide = sin(angle * 3.0 + uRealityMix * 9.0)
-      + sin(angle * 5.0 - uRealityMix * 7.0) * 0.35;
-    float envelope = 1.0 - abs(uRealityMix * 2.0 - 1.0);
-    float edge = r - radius - tide * 0.012 * envelope * aperture;
-    float inside = (1.0 - smoothstep(-0.055, 0.065, edge))
+    float edge = length(screenPoint) - radius;
+    float inside = (1.0 - smoothstep(-0.035, 0.045, edge))
       * smoothstep(0.0, 0.025, radius);
-    float shell = exp(-pow(edge / 0.025, 2.0))
-      * smoothstep(0.015, 0.12, radius) * envelope;
-    vec3 pearl = mix(vec3(0.55, 1.0, 0.86), vec3(1.0, 0.58, 0.83),
-      0.5 + 0.5 * sin(angle * 2.0 - uRealityMix * 8.0));
-    float chroma = 0.5 + 0.5 * sin(screenPoint.x * 1.2 + screenPoint.y * 0.8
-      + uRealityMix * 3.0);
-    vec3 lightField = mix(vec3(0.42, 0.25, 0.68), vec3(0.34, 0.74, 0.63), chroma);
-    lightField = mix(lightField, vec3(0.94, 0.44, 0.48),
-      (0.5 + 0.5 * sin(screenPoint.y * 1.4 - uRealityMix * 4.0)) * 0.38);
-    lightField = mix(lightField, vec3(0.98, 0.9, 1.0), exp(-r * r * 1.8) * 0.8);
-    float halo = exp(-abs(edge) * 11.0) * envelope;
-    return color * inside + lightField * (1.0 - inside)
-      + pearl * (shell * 0.55 + halo * 0.15);
+    if (inside >= 0.999) return color;
+    return mix(portalTunnel(screenPoint), color, inside);
   }
 
   void main() {
@@ -1257,6 +1304,11 @@ const fragmentShader = /* glsl */ `
       gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0); return;
     }
 
+    // The tunnel completely covers the pose change. Skip the underlying
+    // black-hole marcher and alternate world throughout this middle span.
+    if (uRealityMix >= 0.34 && uRealityMix <= 0.66) {
+      gl_FragColor = vec4(portalTunnel(screenPoint), 1.0); return;
+    }
     if (uRealityMix >= 0.5) {
       gl_FragColor = vec4(portalAperture(alternateReality(viewRay), screenPoint), 1.0);
       return;

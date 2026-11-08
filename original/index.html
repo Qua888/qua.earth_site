@@ -33,6 +33,20 @@ body.portal-arrival{
 animation:portal-emerge 3300ms cubic-bezier(.16,.6,.24,1) both;
 will-change:clip-path;
 }
+html.portal-handoff::before{
+content:"";
+position:fixed;
+inset:-18vmax;
+z-index:-1;
+pointer-events:none;
+background:#21121b url('/original/portal-crystal.svg') center/cover;
+animation:portal-funnel 3300ms ease-out both;
+will-change:transform,opacity;
+}
+@keyframes portal-funnel{
+from{transform:scale(.88) rotate(-8deg);opacity:1}
+to{transform:scale(1.35) rotate(12deg);opacity:0}
+}
 @keyframes portal-emerge{
 from{clip-path:circle(0 at 50% 50%)}
 to{clip-path:circle(75vmax at 50% 50%)}
@@ -571,11 +585,13 @@ transform:scale(1.05);
     const body = document.body;
     const root = document.documentElement;
     const background = root.style.background;
-    root.style.background = 'radial-gradient(circle at 50% 50%, #f4eaff 0%, #dca1cb 24%, #c3e8d9 55%, #bdafdf 100%)';
+    root.style.background = '#21121b';
+    root.classList.add('portal-handoff');
     body.classList.add('portal-arrival');
     const finish = (event) => {
       if (event && event.target !== body) return;
       body.classList.remove('portal-arrival');
+      root.classList.remove('portal-handoff');
       root.style.background = background;
       body.removeEventListener('animationend', finish);
       clearTimeout(timer);
