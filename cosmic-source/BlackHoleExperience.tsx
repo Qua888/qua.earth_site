@@ -23,6 +23,8 @@ const ORIGINAL_QUA_SITE_URL = 'https://qua.earth/original/index.html';
 const MOUSE_DRAG_SENSITIVITY = 0.0042;
 const POINTER_LOCK_MOUSE_SENSITIVITY = 0.002205;
 const BOX_REALM_NEAR_DISTANCE = 180;
+const PORTAL_TRANSITION_SECONDS = 1.35;
+const PORTAL_ARRIVAL_KEY = 'qua.portal-arrival';
 const tidalDistance = (journey: number) => BOX_REALM_NEAR_DISTANCE * Math.exp(journey);
 const BOX_REALM_ENTRY = {
   distance: tidalDistance(TIDAL_ZOOM_END),
@@ -62,6 +64,8 @@ const fragmentShader = /* glsl */ `
   uniform float uAscension;
   uniform float uCloudRealm;
   uniform float uMatrixDepth;
+  uniform vec2 uPointerLens;
+  uniform float uPointerPull;
 
   #define STEPS 58
   const float WATER_Y = -80.0;
@@ -1167,9 +1171,54 @@ const fragmentShader = /* glsl */ `
 
   ${cloudRealmShader}
 
+  vec3 portalAperture(vec3 color, vec2 screenPoint) {
+    if (uRealityMix < 0.001 || uRealityMix > 0.999) return color;
+
+    // Close into the same central seed from which the next world unfolds.
+    // A short dark interval conceals the existing halfway camera reset.
+    float closing = 1.0 - smoothstep(0.0, 0.48, uRealityMix);
+    float opening = smoothstep(0.52, 1.0, uRealityMix);
+    float aperture = max(closing, opening);
+    if (uMotion < 0.5) return color * aperture;
+
+    float radius = (length(vec2(uResolution.x / uResolution.y, 1.0)) + 0.22)
+      * pow(aperture, 1.12);
+    float r = length(screenPoint);
+    float angle = atan(screenPoint.y, screenPoint.x);
+    float tide = sin(angle * 3.0 + uRealityMix * 9.0)
+      + sin(angle * 5.0 - uRealityMix * 7.0) * 0.35;
+    float envelope = 1.0 - abs(uRealityMix * 2.0 - 1.0);
+    float edge = r - radius - tide * 0.012 * envelope * aperture;
+    float inside = (1.0 - smoothstep(-0.055, 0.065, edge))
+      * smoothstep(0.0, 0.025, radius);
+    float shell = exp(-pow(edge / 0.025, 2.0))
+      * smoothstep(0.015, 0.12, radius) * envelope;
+    vec3 pearl = mix(vec3(0.35, 0.68, 0.72), vec3(0.76, 0.46, 0.72),
+      0.5 + 0.5 * sin(angle * 2.0 - uRealityMix * 8.0));
+    vec3 seed = vec3(0.024, 0.034, 0.048) * exp(-r * 22.0)
+      * (1.0 - aperture);
+    return color * inside + pearl * shell * 0.2 + seed;
+  }
+
   void main() {
     vec2 p = vUv * 2.0 - 1.0;
     p.x *= uResolution.x / max(uResolution.y, 1.0);
+    vec2 screenPoint = p;
+
+    // Distort the existing rays, rather than adding an overlay or another pass.
+    if (uPointerPull > 0.001) {
+      vec2 delta = p - uPointerLens * 0.18;
+      float field = exp(-dot(delta, delta) * 7.5) * uPointerPull;
+      p += (p * 0.075 + vec2(-p.y, p.x) * 0.009) * field;
+    }
+    if (uRealityMix > 0.001 && uRealityMix < 0.999 && uMotion > 0.5) {
+      float envelope = 1.0 - abs(uRealityMix * 2.0 - 1.0);
+      float gather = envelope * envelope;
+      float twist = gather * 0.58 / (1.0 + length(p) * 1.8);
+      float c = cos(twist), s = sin(twist);
+      p = mat2(c, -s, s, c) * p;
+      p *= 1.0 + gather * 3.0;
+    }
 
     vec3 ro = uCameraPosition;
     vec3 rd = normalize(
@@ -1202,8 +1251,8 @@ const fragmentShader = /* glsl */ `
       gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0); return;
     }
 
-    if (uRealityMix > 0.999) {
-      gl_FragColor = vec4(alternateReality(viewRay), 1.0);
+    if (uRealityMix >= 0.5) {
+      gl_FragColor = vec4(portalAperture(alternateReality(viewRay), screenPoint), 1.0);
       return;
     }
 
@@ -1376,19 +1425,7 @@ const fragmentShader = /* glsl */ `
     }
     radiance *= vignette;
     radiance = 1.0 - exp(-radiance * 1.24);
-    if (uRealityMix > 0.001) {
-      float realityBlend = smoothstep(0.0, 1.0, uRealityMix);
-      float portalFlash = pow(sin(realityBlend * 3.14159265), 6.0);
-      vec3 flashColor = mix(
-        vec3(1.55, 0.018, 0.72),
-        vec3(0.58, 0.025, 1.55),
-        smoothstep(0.25, 0.75, realityBlend)
-      );
-      radiance = mix(radiance, alternateReality(viewRay), realityBlend);
-      radiance += flashColor * portalFlash * 1.25;
-      radiance += vec3(1.0, 0.34, 0.9) * portalFlash * portalFlash * 0.65;
-    }
-    gl_FragColor = vec4(radiance, 1.0);
+    gl_FragColor = vec4(portalAperture(radiance, screenPoint), 1.0);
   }
 `;
 
@@ -1603,6 +1640,7 @@ type IdleWindow = typeof window & {
 };
 
 function createDubTechnoEngine(): DubTechnoEngine | null {
+  if (new URLSearchParams(window.location.search).get('silent') === '1') return null;
   const AudioContextClass = window.AudioContext
     ?? (window as WebKitAudioWindow).webkitAudioContext;
   if (!AudioContextClass) return null;
@@ -2467,6 +2505,8 @@ export default function BlackHoleExperience() {
       uAscension: { value: 0 },
       uCloudRealm: { value: 0 },
       uMatrixDepth: { value: coarsePointer ? 2 : 3 },
+      uPointerLens: { value: new THREE.Vector2() },
+      uPointerPull: { value: 0 },
     };
     const material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms, depthTest: false, depthWrite: false });
     scene.add(new THREE.Mesh(geometry, material));
@@ -2529,6 +2569,9 @@ export default function BlackHoleExperience() {
     let destinationRequested = false;
     let frame = 0;
     let dragging = false;
+    let hoverPull = 0;
+    let canvasBounds = initialBounds;
+    const hoverPoint = new THREE.Vector2();
     let lastPointerX = 0;
     let lastPointerY = 0;
     let pinchAnchor: { distance: number; target: number; alternate: boolean } | null = null;
@@ -2602,6 +2645,25 @@ export default function BlackHoleExperience() {
       playOrbitGesture(event.movementX, event.movementY);
       targetAzimuth -= event.movementX * POINTER_LOCK_MOUSE_SENSITIVITY;
       targetElevation -= event.movementY * POINTER_LOCK_MOUSE_SENSITIVITY;
+    };
+
+    const clearHover = () => { hoverPull = 0; };
+    const onHoverMove = (event: PointerEvent) => {
+      if (coarsePointer || reducedMotion || event.pointerType === 'touch') return;
+      const target = event.target as HTMLElement | null;
+      const overSpace = target === canvas || target?.classList.contains('arrival-layer');
+      if (!overSpace || dragging || document.pointerLockElement === canvas) {
+        clearHover();
+        return;
+      }
+      hoverPoint.set(
+        (2 * (event.clientX - canvasBounds.left) - canvasBounds.width) / canvasBounds.height,
+        1 - 2 * (event.clientY - canvasBounds.top) / canvasBounds.height,
+      );
+      hoverPull = 1 - THREE.MathUtils.smoothstep(hoverPoint.length(), 0.08, 0.68);
+    };
+    const onHoverOut = (event: PointerEvent) => {
+      if (!event.relatedTarget) clearHover();
     };
 
     const onPointerLock = () => {
@@ -2804,6 +2866,7 @@ export default function BlackHoleExperience() {
       playGesture(travel > 0 ? MUSIC_LAYERS.clap : MUSIC_LAYERS.dub);
     };
     const onBlur = () => {
+      clearHover();
       guideSteerRef.current = 0;
       guideDragRef.current = null;
       keys.clear();
@@ -2853,6 +2916,7 @@ export default function BlackHoleExperience() {
     };
     const onResize = () => {
       const bounds = canvas.getBoundingClientRect();
+      canvasBounds = bounds;
       const width = Math.max(1, Math.round(bounds.width));
       const height = Math.max(1, Math.round(bounds.height));
       const scale = coarsePointer ? 0.62 : width < 768 ? 0.72 : 0.88;
@@ -2872,6 +2936,8 @@ export default function BlackHoleExperience() {
     const resizeObserver = new ResizeObserver(onResize);
     resizeObserver.observe(canvas);
     document.addEventListener('mousemove', onPointerMove);
+    document.addEventListener('pointermove', onHoverMove, { passive: true });
+    document.addEventListener('pointerout', onHoverOut, { passive: true });
     document.addEventListener('pointerlockchange', onPointerLock);
     canvas.addEventListener('pointerdown', onCanvasPointerDown, pointerListenerOptions);
     canvas.addEventListener('pointermove', onCanvasPointerMove, pointerListenerOptions);
@@ -2891,6 +2957,11 @@ export default function BlackHoleExperience() {
       lastFrameTime = now;
       if (!visible) return;
       syncMovement();
+      const hoverEnabled = realityPhase === 'cosmic' && !dragging
+        && document.pointerLockElement !== canvas && uniforms.uMacroZoom.value < 0.001;
+      const hoverEase = 1.0 - Math.exp(-6.0 * delta);
+      uniforms.uPointerPull.value += ((hoverEnabled ? hoverPull : 0) - uniforms.uPointerPull.value) * hoverEase;
+      uniforms.uPointerLens.value.lerp(hoverPoint, hoverEase);
 
       const navigationActive = keys.has('a') || keys.has('d') || keys.has('w') || keys.has('s')
         || keys.has('q') || keys.has('e') || keys.has('arrowleft') || keys.has('arrowright')
@@ -3086,7 +3157,7 @@ export default function BlackHoleExperience() {
       }
 
       if (realityPhase === 'entering') {
-        realityMix = Math.min(1, realityMix + delta / 0.86);
+        realityMix = Math.min(1, realityMix + delta / PORTAL_TRANSITION_SECONDS);
         if (!entryResetApplied && realityMix >= 0.5) {
           applyAlternateEntryPose();
           entryResetApplied = true;
@@ -3098,15 +3169,20 @@ export default function BlackHoleExperience() {
       } else if (realityPhase === 'returning') {
         realityMix = destinationRequested
           ? 0.5
-          : Math.max(0, realityMix - delta / 0.86);
+          : Math.max(0, realityMix - delta / PORTAL_TRANSITION_SECONDS);
         if (!exitResetApplied && realityMix <= 0.5) {
           exitResetApplied = true;
           destinationRequested = true;
           audioWantedRef.current = false;
           audioEngineRef.current?.setMuted(true);
           setSoundOn(false);
-          // The portal flash holds at full intensity while the original QUA
-          // experience replaces this WebGL world in the same mobile-safe tab.
+          // Hold the central seed while the original QUA experience replaces
+          // this WebGL world in the same mobile-safe tab.
+          try {
+            sessionStorage.setItem(PORTAL_ARRIVAL_KEY, String(Date.now()));
+          } catch {
+            // Navigation still works when browser storage is unavailable.
+          }
           window.location.assign(ORIGINAL_QUA_SITE_URL);
         }
         if (realityMix <= 0) {
@@ -3152,6 +3228,8 @@ export default function BlackHoleExperience() {
     return () => {
       window.cancelAnimationFrame(frame);
       document.removeEventListener('mousemove', onPointerMove);
+      document.removeEventListener('pointermove', onHoverMove);
+      document.removeEventListener('pointerout', onHoverOut);
       document.removeEventListener('pointerlockchange', onPointerLock);
       canvas.removeEventListener('pointerdown', onCanvasPointerDown, pointerListenerOptions);
       canvas.removeEventListener('pointermove', onCanvasPointerMove, pointerListenerOptions);

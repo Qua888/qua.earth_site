@@ -28,6 +28,19 @@ to top,
 touch-action:manipulation;
 }
 
+/* A one-shot continuation of the black-hole crossing. */
+body.portal-arrival{
+animation:portal-emerge 1100ms cubic-bezier(.16,.6,.24,1) both;
+will-change:clip-path;
+}
+@keyframes portal-emerge{
+from{clip-path:circle(0 at 50% 50%)}
+to{clip-path:circle(75vmax at 50% 50%)}
+}
+@media(prefers-reduced-motion:reduce){
+body.portal-arrival{animation:none;will-change:auto}
+}
+
 /* keep portal layers non-clickable except what we explicitly allow */
 body *:not(.triangle):not(#tapScreen):not(#navBar):not(#navBar *):not(#gameOverlay):not(#gameOverlay *):not(#nextTrack):not(#nextTrack *){
 pointer-events:none;
@@ -547,6 +560,33 @@ transform:scale(1.05);
 </head>
 
 <body>
+<script>
+(() => {
+  try {
+    const key = 'qua.portal-arrival';
+    const stamp = Number(sessionStorage.getItem(key));
+    sessionStorage.removeItem(key);
+    const age = Date.now() - stamp;
+    if (!stamp || age < 0 || age > 15000 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const body = document.body;
+    const root = document.documentElement;
+    const background = root.style.background;
+    root.style.background = '#000';
+    body.classList.add('portal-arrival');
+    const finish = (event) => {
+      if (event && event.target !== body) return;
+      body.classList.remove('portal-arrival');
+      root.style.background = background;
+      body.removeEventListener('animationend', finish);
+      clearTimeout(timer);
+    };
+    body.addEventListener('animationend', finish);
+    const timer = setTimeout(finish, 1500);
+  } catch {
+    // An ordinary visit remains unchanged if browser storage is unavailable.
+  }
+})();
+</script>
 
 <div id="tapScreen">
 <div>! You've arrived !</div><br>
