@@ -30,8 +30,11 @@ touch-action:manipulation;
 
 /* A one-shot continuation of the black-hole crossing. */
 body.portal-arrival{
-animation:portal-emerge 3300ms cubic-bezier(.16,.6,.24,1) both;
+clip-path:circle(0 at 50% 50%);
 will-change:clip-path;
+}
+body.portal-arrival--revealing{
+animation:portal-emerge 4800ms cubic-bezier(.16,.6,.24,1) both;
 }
 html.portal-handoff::before{
 content:"";
@@ -40,7 +43,11 @@ inset:-18vmax;
 z-index:-1;
 pointer-events:none;
 background:#21121b url('/original/portal-crystal.svg') center/cover;
-animation:portal-funnel 3300ms ease-out both;
+transform:scale(.88) rotate(-8deg);
+opacity:1;
+}
+html.portal-handoff--revealing::before{
+animation:portal-funnel 4800ms ease-out both;
 will-change:transform,opacity;
 }
 @keyframes portal-funnel{
@@ -52,7 +59,7 @@ from{clip-path:circle(0 at 50% 50%)}
 to{clip-path:circle(75vmax at 50% 50%)}
 }
 @media(prefers-reduced-motion:reduce){
-body.portal-arrival{animation:none;will-change:auto}
+body.portal-arrival{clip-path:none;animation:none;will-change:auto}
 }
 
 /* keep portal layers non-clickable except what we explicitly allow */
@@ -588,16 +595,41 @@ transform:scale(1.05);
     root.style.background = '#21121b';
     root.classList.add('portal-handoff');
     body.classList.add('portal-arrival');
+    let finished = false;
+    let started = false;
+    let revealTimer;
+    let preparationTimer;
     const finish = (event) => {
-      if (event && event.target !== body) return;
-      body.classList.remove('portal-arrival');
-      root.classList.remove('portal-handoff');
+      if (event && (event.target !== body || event.animationName !== 'portal-emerge')) return;
+      if (finished) return;
+      finished = true;
+      body.classList.remove('portal-arrival', 'portal-arrival--revealing');
+      root.classList.remove('portal-handoff', 'portal-handoff--revealing');
       root.style.background = background;
       body.removeEventListener('animationend', finish);
-      clearTimeout(timer);
+      document.removeEventListener('DOMContentLoaded', onReady);
+      clearTimeout(preparationTimer);
+      clearTimeout(revealTimer);
+    };
+    const startReveal = () => {
+      if (finished || started) return;
+      started = true;
+      clearTimeout(preparationTimer);
+      body.classList.add('portal-arrival--revealing');
+      root.classList.add('portal-handoff--revealing');
+      // This deadline starts with the animation, never with page parsing.
+      revealTimer = setTimeout(finish, 5300);
+    };
+    const onReady = () => {
+      Promise.resolve(document.fonts?.ready).catch(() => {}).then(() => {
+        if (!finished) requestAnimationFrame(() => requestAnimationFrame(startReveal));
+      }).catch(() => finish());
     };
     body.addEventListener('animationend', finish);
-    const timer = setTimeout(finish, 3800);
+    // Stalled fonts/readiness must never leave the original page hidden.
+    preparationTimer = setTimeout(finish, 8000);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onReady, { once: true });
+    else onReady();
   } catch {
     // An ordinary visit remains unchanged if browser storage is unavailable.
   }

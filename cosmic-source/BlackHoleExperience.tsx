@@ -24,6 +24,7 @@ const MOUSE_DRAG_SENSITIVITY = 0.0042;
 const POINTER_LOCK_MOUSE_SENSITIVITY = 0.002205;
 const BOX_REALM_NEAR_DISTANCE = 180;
 const PORTAL_TRANSITION_SECONDS = 4.05;
+const PORTAL_RETURN_SECONDS = 6.0;
 const PORTAL_ARRIVAL_KEY = 'qua.portal-arrival';
 const tidalDistance = (journey: number) => BOX_REALM_NEAR_DISTANCE * Math.exp(journey);
 const BOX_REALM_ENTRY = {
@@ -3211,6 +3212,11 @@ export default function BlackHoleExperience() {
         suppressZoomUntilKeyUp = true;
         exitResetApplied = false;
         destinationRequested = false;
+        const backdropPreload = document.createElement('link');
+        backdropPreload.rel = 'preload';
+        backdropPreload.as = 'image';
+        backdropPreload.href = new URL('/original/portal-crystal.svg', ORIGINAL_QUA_SITE_URL).href;
+        document.head.appendChild(backdropPreload);
         markInteraction();
       }
 
@@ -3227,7 +3233,7 @@ export default function BlackHoleExperience() {
       } else if (realityPhase === 'returning') {
         realityMix = destinationRequested
           ? 0.5
-          : Math.max(0, realityMix - delta / PORTAL_TRANSITION_SECONDS);
+          : Math.max(0, realityMix - delta / PORTAL_RETURN_SECONDS);
         if (!exitResetApplied && realityMix <= 0.5) {
           exitResetApplied = true;
           destinationRequested = true;
