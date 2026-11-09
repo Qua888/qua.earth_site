@@ -678,7 +678,7 @@ const fragmentShader = /* glsl */ `
     float sunSpark = pow(sunMirror, mix(70.0, 145.0, detailFade)) * 0.45;
     float sunFacing = max(dot(waterNormal, ALT_SUN_DIRECTION), 0.0);
     float aboveWater = step(WATER_Y + 0.001, ro.y);
-    waterColor += vec3(1.0, 0.79, 0.57) * sunSpark * sunFacing * aboveWater;
+    waterColor += vec3(1.0, 0.30, 0.63) * sunSpark * sunFacing * aboveWater * 1.35;
     float fog = (1.0 - exp(-distance * 0.0018)) * 0.22;
     waterColor = mix(waterColor, vec3(0.12, 0.075, 0.13), fog);
     return true;
@@ -849,15 +849,22 @@ const fragmentShader = /* glsl */ `
       vec3 mirrorRay = vec3(ray.x, -ray.y, ray.z);
       vec3 reflection = tidalArchitecture(mirrorOrigin, mirrorRay, journey, 1000000.0, true);
       float shimmer = 0.88 + 0.12 * sin(point.z * 2.3 + point.x * 0.45 + uAltBeat * 0.4) * detail;
-      color += reflection * fresnel * shimmer;
+      // Lift only the mirrored light, preserving the dark water between it.
+      float approach = 1.0 - smoothstep(0.8, 7.4, journey);
+      float reflectedLight = max(reflection.r, max(reflection.g, reflection.b));
+      // Lift the faint outlines, with a shoulder that keeps bright glints soft.
+      float roseGlow = reflectedLight * (8.0 / (1.0 + 7.0 * reflectedLight));
+      vec3 roseReflection = mix(reflection, vec3(1.0, 0.24, 0.62) * roseGlow, 0.86);
+      float mirrorVisibility = mix(0.30, 1.0, fresnel) * mix(1.4, 2.0, approach);
+      color += roseReflection * mirrorVisibility * shimmer;
       // Soft, scale-aware rings of reflected light trace the cathedral's tides.
       float tideScale = exp(journey * 0.82);
       float radial = length(point.xz) / tideScale;
       float tide = abs(sin(radial * 0.62 - uAltBeat * 0.008));
       float aa = max(fwidth(radial) * 0.62, 0.014);
       float lines = 1.0 - smoothstep(0.0, aa * 2.0, tide);
-      color += vec3(0.024, 0.12, 0.15) * lines * exp(-radial * 0.06)
-        * smoothstep(0.7, 2.0, journey) * 0.25;
+      color += vec3(0.28, 0.035, 0.14) * lines * exp(-radial * 0.06)
+        * smoothstep(0.7, 2.0, journey) * mix(0.35, 0.45, approach);
       if (origin.y < SEA) color *= vec3(0.3, 0.56, 0.68);
     }
     color += tidalArchitecture(origin, ray, journey, waterDistance, false);
