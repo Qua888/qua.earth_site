@@ -19,7 +19,7 @@ const MATRIX_SCALE = ((1 + Math.sqrt(5)) / 2) ** 4;
 const MATRIX_ZOOM_END = 7.25;
 const COSMIC_DETAIL_RADIUS = 38;
 const TIDAL_ZOOM_END = 7.4;
-const ORIGINAL_QUA_SITE_URL = 'https://qua.earth/original/index.html';
+const ORIGINAL_QUA_SITE_URL = '/original/index.html';
 const MOUSE_DRAG_SENSITIVITY = 0.0042;
 const POINTER_LOCK_MOUSE_SENSITIVITY = 0.002205;
 const BOX_REALM_NEAR_DISTANCE = 180;
@@ -2368,17 +2368,27 @@ function QuaOrb({ active }: QuaOrbProps) {
 }
 
 type ArrivalStage = 'choice' | 'exploring';
+type PortalExitPose = { azimuth: number; elevation: number; boxYaw: number; boxPitch: number };
+
+function readPortalBackPose(): PortalExitPose | null {
+  const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  if (navigation?.type !== 'back_forward') return null;
+  const pose = window.history.state?.quaPortalExit;
+  return pose && [pose.azimuth, pose.elevation, pose.boxYaw, pose.boxPitch].every(Number.isFinite) ? pose : null;
+}
 
 export default function BlackHoleExperience() {
+  const [portalBackPose] = useState(readPortalBackPose);
+  const initialArrivalStage: ArrivalStage = portalBackPose ? 'exploring' : 'choice';
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arrivalPanelRef = useRef<HTMLElement>(null);
   const arrivalSpacePressRef = useRef<{ id: number; x: number; y: number; dragged: boolean } | null>(null);
-  const arrivalStageRef = useRef<ArrivalStage>('choice');
-  const [arrivalStage, setArrivalStage] = useState<ArrivalStage>('choice');
+  const arrivalStageRef = useRef<ArrivalStage>(initialArrivalStage);
+  const [arrivalStage, setArrivalStage] = useState<ArrivalStage>(initialArrivalStage);
   const [exploreHint, setExploreHint] = useState(false);
   const arrivalOpen = arrivalStage !== 'exploring';
   const audioEngineRef = useRef<DubTechnoEngine | null>(null);
-  const audioAutoStartAttemptedRef = useRef(false);
+  const audioAutoStartAttemptedRef = useRef(Boolean(portalBackPose));
   const audioWantedRef = useRef(false);
   const baseTrackRef = useRef<BaseTrack>('deep');
   const guideChoiceRef = useRef<((choice: GuideChoice) => void) | null>(null);
@@ -2388,7 +2398,7 @@ export default function BlackHoleExperience() {
   const guideDragRef = useRef<{ id: number; x: number } | null>(null);
   const musicDockRef = useRef<HTMLDivElement>(null);
   const [active, setActive] = useState(false);
-  const [alternateRealityActive, setAlternateRealityActive] = useState(false);
+  const [alternateRealityActive, setAlternateRealityActive] = useState(Boolean(portalBackPose));
   const [supported, setSupported] = useState(true);
   const [soundOn, setSoundOn] = useState(false);
   const [baseTrack, setBaseTrack] = useState<BaseTrack>('deep');
@@ -2528,6 +2538,7 @@ export default function BlackHoleExperience() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const shell = canvas.parentElement;
 
     let renderer: THREE.WebGLRenderer;
 
@@ -2631,7 +2642,7 @@ export default function BlackHoleExperience() {
     let ascensionTime = 0;
     let suppressZoomUntilKeyUp = false;
     let entryResetApplied = false;
-    let exitResetApplied = false;
+    let exitFrameReady = false;
     let destinationRequested = false;
     let frame = 0;
     let dragging = false;
@@ -2996,6 +3007,35 @@ export default function BlackHoleExperience() {
       if (!visible) onBlur();
       if (visible) markInteraction();
     };
+    const restorePortalAfterExit = () => {
+      onBlur();
+      if (document.pointerLockElement === canvas) document.exitPointerLock();
+      setActive(false);
+      realityPhase = 'alternate';
+      realityMix = 1;
+      exitFrameReady = false;
+      destinationRequested = false;
+      // Back up past the opaque sphere so Back returns to a usable view.
+      alternateDistance = targetAlternateDistance = alternateCrossDistance * 3;
+      portalGuidance.closestDistance = alternateCrossDistance;
+      targetAzimuth = azimuth;
+      targetElevation = elevation;
+      updateBasis();
+      uniforms.uRealityMix.value = realityMix;
+      uniforms.uAltDistance.value = alternateDistance;
+      shell?.style.removeProperty('--portal-exit-fade');
+      lastFrameTime = performance.now();
+      nextNavigationTelemetry = 0;
+      markInteraction();
+      if (visible) canvas.focus({ preventScroll: true });
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(render);
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return;
+      visible = !document.hidden;
+      if (realityPhase === 'returning' && destinationRequested) restorePortalAfterExit();
+    };
 
     updateBasis();
     const pointerListenerOptions: AddEventListenerOptions = { passive: false };
@@ -3018,6 +3058,7 @@ export default function BlackHoleExperience() {
     onResize();
 
     const render = (now: number) => {
+      if (destinationRequested) return;
       frame = window.requestAnimationFrame(render);
       const delta = Math.min((now - lastFrameTime) / 1000, 0.04);
       lastFrameTime = now;
@@ -3217,13 +3258,8 @@ export default function BlackHoleExperience() {
         && alternateDistance <= alternateCrossDistance + 0.018) {
         realityPhase = 'returning';
         suppressZoomUntilKeyUp = true;
-        exitResetApplied = false;
+        exitFrameReady = false;
         destinationRequested = false;
-        const backdropPreload = document.createElement('link');
-        backdropPreload.rel = 'preload';
-        backdropPreload.as = 'image';
-        backdropPreload.href = new URL('/original/portal-crystal.svg', ORIGINAL_QUA_SITE_URL).href;
-        document.head.appendChild(backdropPreload);
         markInteraction();
       }
 
@@ -3237,40 +3273,35 @@ export default function BlackHoleExperience() {
           realityPhase = 'alternate';
           markInteraction();
         }
-      } else if (realityPhase === 'returning') {
-        realityMix = destinationRequested
-          ? 0.5
-          : Math.max(0, realityMix - delta / PORTAL_RETURN_SECONDS);
-        if (!exitResetApplied && realityMix <= 0.5) {
-          exitResetApplied = true;
+      } else if (realityPhase === 'returning' && !destinationRequested) {
+        if (exitFrameReady) {
           destinationRequested = true;
           audioWantedRef.current = false;
           audioEngineRef.current?.setMuted(true);
           setSoundOn(false);
-          // Hold the central seed while the original QUA experience replaces
-          // this WebGL world in the same mobile-safe tab.
           try {
             sessionStorage.setItem(PORTAL_ARRIVAL_KEY, String(Date.now()));
           } catch {
             // Navigation still works when browser storage is unavailable.
           }
-          window.location.assign(ORIGINAL_QUA_SITE_URL);
-        }
-        if (realityMix <= 0) {
-          realityPhase = 'cosmic';
-          azimuth = targetAzimuth = initialAzimuth;
-          elevation = targetElevation = initialElevation;
-          radius = targetRadius = initialRadius;
-          alternateDistance = targetAlternateDistance = alternateEntryDistance;
-          boxYaw = BOX_REALM_ENTRY.boxYaw;
-          boxPitch = BOX_REALM_ENTRY.boxPitch;
-          boxTurn.set(boxYaw, boxPitch);
-          idleViewBlend = 0;
-          idleZoomPhase = 0;
-          wasCosmicIdle = false;
-          setAlternateRealityActive(false);
-          updateBasis();
-          markInteraction();
+          try {
+            // Store the position on this entry for browsers that rebuild the page on Back.
+            window.history.replaceState({ ...window.history.state, quaPortalExit: { azimuth, elevation, boxYaw, boxPitch } }, '');
+          } catch {
+            // A cached page can still restore its in-memory position.
+          }
+          try {
+            window.location.assign(ORIGINAL_QUA_SITE_URL);
+          } catch {
+            restorePortalAfterExit();
+          }
+          return;
+        } else {
+          realityMix = Math.max(0.5, realityMix - delta / PORTAL_RETURN_SECONDS);
+          if (realityMix < 0.66) {
+            const fade = 1 - THREE.MathUtils.smoothstep(realityMix, 0.5, 0.66);
+            shell?.style.setProperty('--portal-exit-fade', String(fade));
+          }
         }
       }
 
@@ -3284,6 +3315,8 @@ export default function BlackHoleExperience() {
         nextNavigationTelemetry = now + 125;
       }
       renderer.render(scene, camera);
+      // Let the fully black frame reach the browser before requesting navigation.
+      if (realityPhase === 'returning' && realityMix === 0.5) exitFrameReady = true;
       if (realityPhase === 'guide' || (realityPhase === 'collapsing' && ascensionTime > 5.4)) {
         const opacity = THREE.MathUtils.smoothstep(ascensionTime, 5.4, ASCENSION_DURATION);
         cosmicGuide.update(uniforms.uAltBeat.value, opacity, reducedMotion, guideTurnRef.current);
@@ -3294,10 +3327,19 @@ export default function BlackHoleExperience() {
       }
     };
 
-    frame = window.requestAnimationFrame(render);
+    window.addEventListener('pageshow', onPageShow);
+    if (portalBackPose) {
+      ({ azimuth, elevation, boxYaw, boxPitch } = portalBackPose);
+      boxTurn.set(boxYaw, boxPitch);
+      restorePortalAfterExit();
+    } else {
+      frame = window.requestAnimationFrame(render);
+    }
 
     return () => {
       window.cancelAnimationFrame(frame);
+      window.removeEventListener('pageshow', onPageShow);
+      shell?.style.removeProperty('--portal-exit-fade');
       document.removeEventListener('mousemove', onPointerMove);
       document.removeEventListener('pointermove', onHoverMove);
       document.removeEventListener('pointerout', onHoverOut);

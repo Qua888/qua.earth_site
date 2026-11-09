@@ -151,6 +151,16 @@ body {
   background: #000;
 }
 
+.experience-shell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  background: #000;
+  opacity: var(--portal-exit-fade, 0);
+}
+
 .space-canvas {
   position: absolute;
   inset: 0;

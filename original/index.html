@@ -8,6 +8,8 @@
 
 <style>
 
+html{background:#000}
+
 body{
 margin:0;
 overflow:hidden;
@@ -28,38 +30,17 @@ to top,
 touch-action:manipulation;
 }
 
-/* A one-shot continuation of the black-hole crossing. */
-body.portal-arrival{
-clip-path:circle(0 at 50% 50%);
-will-change:clip-path;
+/* The tunnel ends on the same black as this screen. Fade only the words. */
+html.portal-arrival #tapScreen{color:transparent}
+html.portal-arrival--revealing #tapScreen{
+animation:portal-arrival-title 2200ms ease-out both;
 }
-body.portal-arrival--revealing{
-animation:portal-emerge 4800ms cubic-bezier(.16,.6,.24,1) both;
-}
-html.portal-handoff::before{
-content:"";
-position:fixed;
-inset:-18vmax;
-z-index:-1;
-pointer-events:none;
-background:#21121b url('/original/portal-crystal.svg') center/cover;
-transform:scale(.88) rotate(-8deg);
-opacity:1;
-}
-html.portal-handoff--revealing::before{
-animation:portal-funnel 4800ms ease-out both;
-will-change:transform,opacity;
-}
-@keyframes portal-funnel{
-from{transform:scale(.88) rotate(-8deg);opacity:1}
-to{transform:scale(1.35) rotate(12deg);opacity:0}
-}
-@keyframes portal-emerge{
-from{clip-path:circle(0 at 50% 50%)}
-to{clip-path:circle(75vmax at 50% 50%)}
+@keyframes portal-arrival-title{
+from{color:transparent}
+to{color:white}
 }
 @media(prefers-reduced-motion:reduce){
-body.portal-arrival{clip-path:none;animation:none;will-change:auto}
+html.portal-arrival #tapScreen{color:white;animation:none}
 }
 
 /* keep portal layers non-clickable except what we explicitly allow */
@@ -591,21 +572,16 @@ transform:scale(1.05);
     if (!stamp || age < 0 || age > 15000 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const body = document.body;
     const root = document.documentElement;
-    const background = root.style.background;
-    root.style.background = '#21121b';
-    root.classList.add('portal-handoff');
-    body.classList.add('portal-arrival');
+    root.classList.add('portal-arrival');
     let finished = false;
     let started = false;
     let revealTimer;
     let preparationTimer;
     const finish = (event) => {
-      if (event && (event.target !== body || event.animationName !== 'portal-emerge')) return;
+      if (event && (event.target?.id !== 'tapScreen' || event.animationName !== 'portal-arrival-title')) return;
       if (finished) return;
       finished = true;
-      body.classList.remove('portal-arrival', 'portal-arrival--revealing');
-      root.classList.remove('portal-handoff', 'portal-handoff--revealing');
-      root.style.background = background;
+      root.classList.remove('portal-arrival', 'portal-arrival--revealing');
       body.removeEventListener('animationend', finish);
       document.removeEventListener('DOMContentLoaded', onReady);
       clearTimeout(preparationTimer);
@@ -615,10 +591,8 @@ transform:scale(1.05);
       if (finished || started) return;
       started = true;
       clearTimeout(preparationTimer);
-      body.classList.add('portal-arrival--revealing');
-      root.classList.add('portal-handoff--revealing');
-      // This deadline starts with the animation, never with page parsing.
-      revealTimer = setTimeout(finish, 5300);
+      root.classList.add('portal-arrival--revealing');
+      revealTimer = setTimeout(finish, 2700);
     };
     const onReady = () => {
       Promise.resolve(document.fonts?.ready).catch(() => {}).then(() => {
@@ -626,7 +600,7 @@ transform:scale(1.05);
       }).catch(() => finish());
     };
     body.addEventListener('animationend', finish);
-    // Stalled fonts/readiness must never leave the original page hidden.
+    // A stalled font request must still leave the arrival prompt readable.
     preparationTimer = setTimeout(finish, 8000);
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onReady, { once: true });
     else onReady();
