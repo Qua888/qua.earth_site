@@ -54,7 +54,7 @@ const fragmentShader = /* glsl */ `
   uniform float uCometSeed;
   uniform float uAltBeat;
   uniform float uRealityMix;
-  uniform float uPortalEntering;
+  uniform float uPortalReturning;
   uniform float uAltDistance;
   uniform vec2 uBoxTurn;
   uniform vec3 uCameraPosition;
@@ -1191,17 +1191,27 @@ const fragmentShader = /* glsl */ `
     return f;
   }
 
+  float portalProgress() {
+    return uPortalReturning > 0.5 ? 2.0 * (1.0 - uRealityMix) : uRealityMix;
+  }
+
   float portalOpening() {
+    if (uPortalReturning > 0.5) return 1.0 - smoothstep(0.0, 0.34, portalProgress());
     return max(1.0 - smoothstep(0.0, 0.34, uRealityMix),
       smoothstep(0.66, 1.0, uRealityMix));
   }
 
   vec3 portalTunnel(vec2 screenPoint) {
-    if (uMotion < 0.5) return vec3(0.86, 0.73, 0.46);
+    float progress = portalProgress();
+    bool returning = uPortalReturning > 0.5;
+    vec3 pupilColor = returning ? vec3(247.0, 251.0, 255.0) / 255.0 : vec3(0.97, 0.985, 1.0);
+    if (uMotion < 0.5) {
+      float exitLight = returning ? smoothstep(0.68, 1.0, progress) : 0.0;
+      return mix(vec3(0.86, 0.73, 0.46), pupilColor, exitLight);
+    }
     float r = length(screenPoint);
-    float travel = uRealityMix * 8.0;
-    float forwardTravel = mix(-travel, travel, uPortalEntering);
-    float tunnelScale = mix(1.0, 0.65, smoothstep(0.36, 0.66, uRealityMix) * uPortalEntering);
+    float travel = progress * 8.0;
+    float tunnelScale = mix(1.0, 0.65, smoothstep(0.36, 0.66, progress));
     // An analytic tapered octagonal wall: perspective depth increases toward
     // the pupil. No march, texture, extra scene or extra render pass.
     float depth = -log(max(r * tunnelScale, 0.018)) * 1.35;
@@ -1220,7 +1230,7 @@ const fragmentShader = /* glsl */ `
     float facing = abs(dot(n, -ray));
     float light = max(dot(n, normalize(vec3(-0.4, 0.8, 1.0))), 0.0);
 
-    vec3 local = vec3(wall.xy, depth + forwardTravel * 0.6);
+    vec3 local = vec3(wall.xy, depth + travel * 0.6);
     vec3 flowing = local * 2.1;
     flowing.x += sin(local.y * 1.6 + travel * 0.19) * 0.22;
     flowing.y -= travel * 0.09;
@@ -1237,7 +1247,7 @@ const fragmentShader = /* glsl */ `
     crystal += rainbow * fold * 0.16 + mix(gold, rainbow, 0.38) * sheen * 0.11;
 
     // Receding octagonal ribs and long facet seams make the depth readable.
-    float ribPhase = depth * 4.8 + forwardTravel * 1.65;
+    float ribPhase = depth * 4.8 + travel * 1.65;
     float ribWidth = max(fwidth(ribPhase) * 1.25, 0.025);
     float ribs = 1.0 - smoothstep(0.0, ribWidth, abs(sin(ribPhase)));
     float facetPhase = sin(angle * 4.0 + 1.5707963268);
@@ -1247,18 +1257,23 @@ const fragmentShader = /* glsl */ `
     crystal += mix(gold, rainbow, 0.34) * (ribs * 0.45 + seams * 0.38)
       * (1.0 - smoothstep(3.7, 5.3, depth));
     float pupil = exp(-r * r * tunnelScale * tunnelScale / 0.0012);
-    vec3 pupilColor = mix(vec3(1.0, 0.89, 0.64), vec3(0.97, 0.985, 1.0), uPortalEntering);
     crystal += pupilColor * pupil * 1.3;
-    if (uPortalEntering > 0.5 && uRealityMix > 0.49) {
-      // The pupil grows ahead of the red aperture, which opens inside its glow.
+    if (progress > 0.49) {
       float aspect = uResolution.x / max(uResolution.y, 1.0);
       float screenRadius = length(vec2(aspect, 1.0)) + 0.22;
-      float lightLead = 0.16 * smoothstep(0.49, 0.72, uRealityMix)
-        * (1.0 - smoothstep(0.93, 1.0, uRealityMix));
-      float lightRadius = screenRadius * (pow(portalOpening(), 1.12) + lightLead);
+      float lightSpread;
+      if (returning) {
+        // Fill the viewport with the same light that opens the destination page.
+        lightSpread = pow(smoothstep(0.49, 1.0, progress), 1.35);
+      } else {
+        float lightLead = 0.16 * smoothstep(0.49, 0.72, progress)
+          * (1.0 - smoothstep(0.93, 1.0, progress));
+        lightSpread = pow(portalOpening(), 1.12) + lightLead;
+      }
+      float lightRadius = screenRadius * lightSpread;
       float lightMask = (1.0 - smoothstep(lightRadius - 0.075, lightRadius + 0.075, r))
         * smoothstep(0.0, 0.09, lightRadius);
-      crystal = mix(crystal, pupilColor, lightMask * 0.94);
+      crystal = mix(crystal, pupilColor, lightMask * (returning ? 1.0 : 0.94));
     }
     return crystal;
   }
@@ -1329,7 +1344,8 @@ const fragmentShader = /* glsl */ `
 
     // The tunnel completely covers the pose change. Skip the underlying
     // black-hole marcher and alternate world throughout this middle span.
-    if (uRealityMix >= 0.34 && uRealityMix <= 0.66) {
+    if (uPortalReturning > 0.5 ? portalProgress() >= 0.34
+      : (uRealityMix >= 0.34 && uRealityMix <= 0.66)) {
       gl_FragColor = vec4(portalTunnel(screenPoint), 1.0); return;
     }
     if (uRealityMix >= 0.5) {
@@ -2586,7 +2602,7 @@ export default function BlackHoleExperience() {
       uCometSeed: { value: Math.random() * 997 },
       uAltBeat: { value: 0 },
       uRealityMix: { value: 0 },
-      uPortalEntering: { value: 0 },
+      uPortalReturning: { value: 0 },
       uAltDistance: { value: BOX_REALM_ENTRY.distance },
       uBoxTurn: { value: new THREE.Vector2(BOX_REALM_ENTRY.boxYaw, BOX_REALM_ENTRY.boxPitch) },
       uCameraPosition: { value: new THREE.Vector3(0.35, 1.05, 9.25) },
@@ -3314,15 +3330,15 @@ export default function BlackHoleExperience() {
           return;
         } else {
           realityMix = Math.max(0.5, realityMix - delta / PORTAL_RETURN_SECONDS);
-          if (realityMix < 0.66) {
-            const fade = 1 - THREE.MathUtils.smoothstep(realityMix, 0.5, 0.66);
+          if (realityMix < 0.54) {
+            const fade = 1 - THREE.MathUtils.smoothstep(realityMix, 0.5, 0.54);
             shell?.style.setProperty('--portal-exit-fade', String(fade));
           }
         }
       }
 
       uniforms.uRealityMix.value = realityMix;
-      uniforms.uPortalEntering.value = Number(realityPhase === 'entering');
+      uniforms.uPortalReturning.value = Number(realityPhase === 'returning');
       uniforms.uAltDistance.value = alternateDistance;
       if (now >= nextNavigationTelemetry) {
         canvas.dataset.realm = realityPhase;
@@ -3332,7 +3348,7 @@ export default function BlackHoleExperience() {
         nextNavigationTelemetry = now + 125;
       }
       renderer.render(scene, camera);
-      // Let the fully black frame reach the browser before requesting navigation.
+      // Let the fully lit frame reach the browser before requesting navigation.
       if (realityPhase === 'returning' && realityMix === 0.5) exitFrameReady = true;
       if (realityPhase === 'guide' || (realityPhase === 'collapsing' && ascensionTime > 5.4)) {
         const opacity = THREE.MathUtils.smoothstep(ascensionTime, 5.4, ASCENSION_DURATION);

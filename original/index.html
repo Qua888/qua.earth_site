@@ -30,17 +30,37 @@ to top,
 touch-action:manipulation;
 }
 
-/* The tunnel ends on the same black as this screen. Fade only the words. */
-html.portal-arrival #tapScreen{color:transparent}
-html.portal-arrival--revealing #tapScreen{
-animation:portal-arrival-title 2200ms ease-out both;
+/* Match the tunnel's last frame while the black arrival screen opens. */
+html.portal-arrival{
+--portal-arrival-light:#f7fbff;
+background:var(--portal-arrival-light);
 }
-@keyframes portal-arrival-title{
-from{color:transparent}
-to{color:white}
+html.portal-arrival::before{
+content:"";
+position:fixed;
+inset:0;
+z-index:300;
+background:var(--portal-arrival-light);
+}
+html.portal-arrival #tapScreen{
+z-index:301;
+clip-path:circle(0px at 50% 50%);
+pointer-events:none;
+}
+html.portal-arrival--revealing #tapScreen{
+--portal-aperture-start:0px;
+animation:portal-arrival-reveal 2200ms cubic-bezier(.22,.72,.28,1) both;
+}
+@keyframes portal-arrival-reveal{
+from{clip-path:circle(var(--portal-aperture-start) at 50% 50%);opacity:0}
+to{clip-path:circle(75vmax at 50% 50%);opacity:1}
 }
 @media(prefers-reduced-motion:reduce){
-html.portal-arrival #tapScreen{color:white;animation:none}
+html.portal-arrival--revealing #tapScreen{
+--portal-aperture-start:75vmax;
+animation-duration:500ms;
+animation-timing-function:ease-out;
+}
 }
 
 /* keep portal layers non-clickable except what we explicitly allow */
@@ -569,21 +589,25 @@ transform:scale(1.05);
     const stamp = Number(sessionStorage.getItem(key));
     sessionStorage.removeItem(key);
     const age = Date.now() - stamp;
-    if (!stamp || age < 0 || age > 15000 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!stamp || age < 0 || age > 15000) return;
     const body = document.body;
     const root = document.documentElement;
+    const wasInert = body.inert;
     root.classList.add('portal-arrival');
+    body.inert = true;
     let finished = false;
     let started = false;
     let revealTimer;
     let preparationTimer;
     const finish = (event) => {
-      if (event && (event.target?.id !== 'tapScreen' || event.animationName !== 'portal-arrival-title')) return;
+      if (event && (event.target?.id !== 'tapScreen' || event.animationName !== 'portal-arrival-reveal')) return;
       if (finished) return;
       finished = true;
       root.classList.remove('portal-arrival', 'portal-arrival--revealing');
+      body.inert = wasInert;
       body.removeEventListener('animationend', finish);
       document.removeEventListener('DOMContentLoaded', onReady);
+      window.removeEventListener('pagehide', onPageHide);
       clearTimeout(preparationTimer);
       clearTimeout(revealTimer);
     };
@@ -592,14 +616,17 @@ transform:scale(1.05);
       started = true;
       clearTimeout(preparationTimer);
       root.classList.add('portal-arrival--revealing');
-      revealTimer = setTimeout(finish, 2700);
+      const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      revealTimer = setTimeout(finish, reducedMotion ? 1000 : 2700);
     };
     const onReady = () => {
       Promise.resolve(document.fonts?.ready).catch(() => {}).then(() => {
         if (!finished) requestAnimationFrame(() => requestAnimationFrame(startReveal));
       }).catch(() => finish());
     };
+    const onPageHide = () => finish();
     body.addEventListener('animationend', finish);
+    window.addEventListener('pagehide', onPageHide);
     // A stalled font request must still leave the arrival prompt readable.
     preparationTimer = setTimeout(finish, 8000);
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onReady, { once: true });
