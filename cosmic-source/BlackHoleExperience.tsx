@@ -54,6 +54,7 @@ const fragmentShader = /* glsl */ `
   uniform float uCometSeed;
   uniform float uAltBeat;
   uniform float uRealityMix;
+  uniform float uPortalEntering;
   uniform float uAltDistance;
   uniform vec2 uBoxTurn;
   uniform vec3 uCameraPosition;
@@ -1199,12 +1200,14 @@ const fragmentShader = /* glsl */ `
     if (uMotion < 0.5) return vec3(0.86, 0.73, 0.46);
     float r = length(screenPoint);
     float travel = uRealityMix * 8.0;
+    float forwardTravel = mix(-travel, travel, uPortalEntering);
+    float tunnelScale = mix(1.0, 0.65, smoothstep(0.36, 0.66, uRealityMix) * uPortalEntering);
     // An analytic tapered octagonal wall: perspective depth increases toward
     // the pupil. No march, texture, extra scene or extra render pass.
-    float depth = -log(max(r, 0.018)) * 1.35;
+    float depth = -log(max(r * tunnelScale, 0.018)) * 1.35;
     float twist = travel * 0.13 + depth * 0.22;
     float c = cos(twist), s = sin(twist);
-    vec2 q = mat2(c, -s, s, c) * screenPoint;
+    vec2 q = mat2(c, -s, s, c) * (screenPoint * tunnelScale);
     float angle = atan(q.y, q.x + 0.0000001);
     float facetAngle = floor(angle / 0.7853981634 + 0.5) * 0.7853981634;
     vec2 facet = vec2(cos(facetAngle), sin(facetAngle));
@@ -1217,7 +1220,7 @@ const fragmentShader = /* glsl */ `
     float facing = abs(dot(n, -ray));
     float light = max(dot(n, normalize(vec3(-0.4, 0.8, 1.0))), 0.0);
 
-    vec3 local = vec3(wall.xy, depth - travel * 0.6);
+    vec3 local = vec3(wall.xy, depth + forwardTravel * 0.6);
     vec3 flowing = local * 2.1;
     flowing.x += sin(local.y * 1.6 + travel * 0.19) * 0.22;
     flowing.y -= travel * 0.09;
@@ -1234,7 +1237,7 @@ const fragmentShader = /* glsl */ `
     crystal += rainbow * fold * 0.16 + mix(gold, rainbow, 0.38) * sheen * 0.11;
 
     // Receding octagonal ribs and long facet seams make the depth readable.
-    float ribPhase = depth * 4.8 - travel * 1.65;
+    float ribPhase = depth * 4.8 + forwardTravel * 1.65;
     float ribWidth = max(fwidth(ribPhase) * 1.25, 0.025);
     float ribs = 1.0 - smoothstep(0.0, ribWidth, abs(sin(ribPhase)));
     float facetPhase = sin(angle * 4.0 + 1.5707963268);
@@ -1243,8 +1246,20 @@ const fragmentShader = /* glsl */ `
     crystal *= mix(0.94, 0.24, distant);
     crystal += mix(gold, rainbow, 0.34) * (ribs * 0.45 + seams * 0.38)
       * (1.0 - smoothstep(3.7, 5.3, depth));
-    float pupil = exp(-r * r / 0.0012);
-    crystal += vec3(1.0, 0.89, 0.64) * pupil * 1.3;
+    float pupil = exp(-r * r * tunnelScale * tunnelScale / 0.0012);
+    vec3 pupilColor = mix(vec3(1.0, 0.89, 0.64), vec3(0.97, 0.985, 1.0), uPortalEntering);
+    crystal += pupilColor * pupil * 1.3;
+    if (uPortalEntering > 0.5 && uRealityMix > 0.49) {
+      // The pupil grows ahead of the red aperture, which opens inside its glow.
+      float aspect = uResolution.x / max(uResolution.y, 1.0);
+      float screenRadius = length(vec2(aspect, 1.0)) + 0.22;
+      float lightLead = 0.16 * smoothstep(0.49, 0.72, uRealityMix)
+        * (1.0 - smoothstep(0.93, 1.0, uRealityMix));
+      float lightRadius = screenRadius * (pow(portalOpening(), 1.12) + lightLead);
+      float lightMask = (1.0 - smoothstep(lightRadius - 0.075, lightRadius + 0.075, r))
+        * smoothstep(0.0, 0.09, lightRadius);
+      crystal = mix(crystal, pupilColor, lightMask * 0.94);
+    }
     return crystal;
   }
 
@@ -2571,6 +2586,7 @@ export default function BlackHoleExperience() {
       uCometSeed: { value: Math.random() * 997 },
       uAltBeat: { value: 0 },
       uRealityMix: { value: 0 },
+      uPortalEntering: { value: 0 },
       uAltDistance: { value: BOX_REALM_ENTRY.distance },
       uBoxTurn: { value: new THREE.Vector2(BOX_REALM_ENTRY.boxYaw, BOX_REALM_ENTRY.boxPitch) },
       uCameraPosition: { value: new THREE.Vector3(0.35, 1.05, 9.25) },
@@ -3306,6 +3322,7 @@ export default function BlackHoleExperience() {
       }
 
       uniforms.uRealityMix.value = realityMix;
+      uniforms.uPortalEntering.value = Number(realityPhase === 'entering');
       uniforms.uAltDistance.value = alternateDistance;
       if (now >= nextNavigationTelemetry) {
         canvas.dataset.realm = realityPhase;
